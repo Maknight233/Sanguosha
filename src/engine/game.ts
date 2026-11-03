@@ -39,6 +39,29 @@ export const DRAW_PER_TURN = 2;
 const LORD_CHOICES = 3;
 const OTHER_CHOICES = 2;
 
+/** 公开敌对行为的分量（AI 身份推理用） */
+export const HOSTILE_WEIGHT = {
+  /** 【斩】、火计、比武、惑心发起者 */
+  zhan: 1,
+  /** 劫营、策反：只是拆牌 */
+  steal: 0.6,
+  /** 被惑心逼出的【斩】 */
+  forced: 0.5,
+};
+
+/** 公开帮助行为的分量 */
+export const HELP_WEIGHT = {
+  /** 濒死时对别人使用【药】 */
+  save: 1.5,
+  /** 宽仁令别人回复体力 */
+  heal: 1,
+  /** 用【识破】替别人挡掉有害锦囊、号令替主公出【避】 */
+  cover: 1,
+};
+
+/** 对目标有害的锦囊 */
+export const HARMFUL_TRICK_KEYS = new Set(['jieying', 'cefan', 'xiwen', 'biwu']);
+
 /** 内部用于中断流程的胜负信号 */
 export class GameOver extends Error {
   constructor(public readonly winner: Winner) {
@@ -77,6 +100,8 @@ export class Game {
   private yulinTurn = new Map<number, number>();
   /** 公开的敌对行为记录（见 GameView.hostility） */
   hostility: number[][] = [];
+  /** 公开的帮助行为记录（见 GameView.help） */
+  help: number[][] = [];
   /** 阵亡顺序 */
   deathOrder: number[] = [];
   /** 本回合已发动的限一次技能 */
@@ -131,8 +156,14 @@ export class Game {
     return generalDef(this.players[seat].general).faction;
   }
 
-  markHostile(from: number, to: number): void {
-    if (from !== to && this.hostility[from]) this.hostility[from][to]++;
+  /** 记录公开的敌对行为；weight 为该行为的分量（见 HOSTILE_WEIGHT） */
+  markHostile(from: number, to: number, weight: number = HOSTILE_WEIGHT.zhan): void {
+    if (from !== to && this.hostility[from]) this.hostility[from][to] += weight;
+  }
+
+  /** 记录公开的帮助行为（救人、回血、替人挡锦囊等） */
+  markHelp(from: number, to: number, weight: number): void {
+    if (from !== to && this.help[from]) this.help[from][to] += weight;
   }
 
   // ───────────── 对局流程 ─────────────
@@ -158,6 +189,7 @@ export class Game {
     }));
 
     this.hostility = roles.map(() => roles.map(() => 0));
+    this.help = roles.map(() => roles.map(() => 0));
     const lordSeat = roles.indexOf('lord');
     await this.chooseGenerals(lordSeat);
 
@@ -546,7 +578,7 @@ export class Game {
       case 'jieying':
       case 'cefan': {
         const t = target!;
-        this.markHostile(user, t);
+        this.markHostile(user, t, HOSTILE_WEIGHT.steal);
         this.addLog(`${this.who(user)} 对 ${this.who(t)} 使用了 ${cardText(card)}。`);
         if (await this.nullified(card, user, t)) break;
         const taken = await this.pickCardFrom(user, t, card.key);
@@ -626,6 +658,7 @@ export class Game {
         for (const id of ids) this.takeFromHand(p, id);
         this.discard(cards as Card[]);
         this.addLog(`${this.who(seat)} 发动【宽仁】，弃置两张手牌，令 ${this.who(target)} 回复体力。`);
+        this.markHelp(seat, target, HELP_WEIGHT.heal);
         this.recover(target, 1);
         break;
       }
@@ -649,7 +682,7 @@ export class Game {
         const z = await this.askForCard(target, ['zhan'], { kind: 'huoxin', victim, from: seat });
         if (z) {
           this.addLog(`${this.who(target)} 对 ${this.who(victim)} 使用了 ${cardText(z[0])}。`);
-          this.markHostile(target, victim);
+          this.markHostile(target, victim, HOSTILE_WEIGHT.forced);
           await this.resolveZhan(target, victim);
         } else {
           const a = this.players[target];
@@ -714,6 +747,7 @@ export class Game {
         if (this.faction(s) !== 'wei') continue;
         const c = await this.askForCard(s, ['bi'], { kind: 'haoling', lord: target, source });
         if (c) {
+          this.markHelp(s, target, HELP_WEIGHT.cover);
           this.addLog(`${this.who(s)} 响应【号令】，替 ${this.who(target)} 打出 ${cardText(c[0])}，抵消了【斩】。`);
           return true;
         }
@@ -766,6 +800,7 @@ export class Game {
           countering: cancelled,
         });
         if (!c) continue;
+        this.markShipo(s, trick.key, target, !cancelled);
         const what = cancelled ? '【识破】' : `${cardText(trick)} 对 ${this.who(target)} 的效果`;
         this.addLog(`${this.who(s)} 打出 ${cardText(c[0])}，抵消了${what}。`);
         cancelled = !cancelled;
@@ -774,6 +809,17 @@ export class Game {
       }
       if (!played) return cancelled;
     }
+  }
+
+  /**
+   * 【识破】的敌友含义：blocks 为 true 表示这张【识破】使锦囊对 target 失效，否则表示让锦囊重新生效。
+   * 挡掉有害锦囊 = 帮助 target；挡掉有益锦囊 = 敌对；让锦囊重新生效则反过来（分量减半）。
+   */
+  private markShipo(s: number, trick: string, target: number, blocks: boolean): void {
+    const harmful = HARMFUL_TRICK_KEYS.has(trick);
+    const w = blocks ? HELP_WEIGHT.cover : HELP_WEIGHT.cover / 2;
+    if (harmful === blocks) this.markHelp(s, target, w);
+    else this.markHostile(s, target, w);
   }
 
   /**
@@ -884,6 +930,7 @@ export class Game {
         const card = await this.askForCard(s, ['yao'], { kind: 'save', dying: seat });
         if (!card) break;
         this.addLog(`${this.who(s)} 对 ${this.who(seat)} 使用了 ${cardText(card[0])}。`);
+        this.markHelp(s, seat, HELP_WEIGHT.save);
         this.recover(seat, 1);
         // 桃园
         if (s !== seat && this.isLord(seat, 'liubei') && this.faction(s) === 'shu') {
@@ -977,6 +1024,7 @@ export class Game {
       zhanUsed: this.zhanUsed,
       zhanLimit: this.zhanLimit,
       hostility: this.hostility.map((row) => [...row]),
+      help: this.help.map((row) => [...row]),
       deathOrder: [...this.deathOrder],
       players: this.players.map((p) => ({
         seat: p.seat,

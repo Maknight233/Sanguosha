@@ -16,7 +16,7 @@ import type {
 
 /**
  * 基础 AI：只使用自己能看到的信息（GameView）。
- * 不做身份推理，只根据「已知身份」和「公开的敌对行为记录（记仇）」判断敌友。
+ * 根据「已知身份」「身份排除」和「身份倾向分」（由公开的敌对 / 帮助行为连锁推理得出）判断敌友。
  */
 
 type Relation = 'friend' | 'enemy' | 'neutral';
@@ -28,6 +28,11 @@ const GENERAL_PREFERENCE = [
 
 /** 内奸帮反贼期间，主公体力降到此值及以下时转回帮主公 */
 export const LORD_DANGER_HP = 4;
+
+/** 身份倾向分超过此值才认定敌友（+1 确定忠，−1 确定反） */
+export const LEAN_THRESHOLD = 0.4;
+/** 连锁推理的迭代轮数 */
+const LEAN_ITERATIONS = 8;
 
 const HARMFUL_TRICKS = new Set(['jieying', 'cefan', 'xiwen', 'biwu']);
 const EQUIP_STEAL_ORDER = ['armor', 'weapon', 'horsePlus', 'horseMinus'] as const;
@@ -43,6 +48,8 @@ class Brain {
   readonly me: PlayerPublic;
   readonly hand: Card[];
   readonly lord: PlayerPublic;
+
+  private leanCache: number[] | null = null;
 
   constructor(readonly view: GameView) {
     this.me = view.players[view.me];
@@ -97,6 +104,47 @@ class Brain {
     return new Set(pool);
   }
 
+  /** 身份倾向的锚点：已知（或可推出）身份的角色固定为 +1 / −1 / 0（内奸） */
+  private anchor(seat: number): number | null {
+    let role: string | null = this.view.players[seat].role;
+    if (role === null) {
+      const pool = this.unknownRoles();
+      if (pool.size === 1) role = [...pool][0];
+    }
+    // 内奸看自己时不当锚点（自己不在忠反任一边）
+    if (role === null || (role === 'renegade' && seat === this.me.seat)) return null;
+    return role === 'lord' || role === 'loyalist' ? 1 : role === 'rebel' ? -1 : 0;
+  }
+
+  /**
+   * 身份倾向分（−1 偏反 … +1 偏忠），从自己的视角连锁推理：
+   * 某人的分数 = Σ（他对 t 的帮助 − 他对 t 的敌对）× t 的当前分数。
+   * 与行为发生顺序无关；每轮限制在 ±1 内并与上一轮取平均，避免越滚越大。
+   */
+  lean(seat: number): number {
+    if (!this.leanCache) {
+      const n = this.view.players.length;
+      const anchors = this.view.players.map((p) => this.anchor(p.seat));
+      let lean = anchors.map((a) => a ?? 0);
+      for (let it = 0; it < LEAN_ITERATIONS; it++) {
+        lean = lean.map((cur, x) => {
+          if (anchors[x] !== null) return anchors[x]!;
+          let raw = 0;
+          for (let t = 0; t < n; t++) {
+            if (t === x) continue;
+            raw += ((this.view.help[x]?.[t] ?? 0) - (this.view.hostility[x]?.[t] ?? 0)) * lean[t];
+          }
+          return (cur + Math.max(-1, Math.min(1, raw))) / 2;
+        });
+      }
+      this.leanCache = lean;
+    }
+    return this.leanCache[seat];
+  }
+
+  private looksLoyal = (seat: number) => this.lean(seat) > LEAN_THRESHOLD;
+  private looksRebel = (seat: number) => this.lean(seat) < -LEAN_THRESHOLD;
+
   relation(seat: number): Relation {
     if (seat === this.me.seat) return 'friend';
     const known = this.view.players[seat].role;
@@ -120,27 +168,21 @@ class Brain {
   private relationByBehavior(seat: number): Relation {
     const me = this.me.seat;
     const lord = this.lord.seat;
-    const attacksLord = this.hostile(seat, lord);
+    // 打过我、又不像队友的人：还手
     const attacksMe = this.hostile(seat, me);
-    const other = this.view.players[seat];
-    // 攻击过「我方明确队友」的人也视为敌人
-    const attacksAlly = (allies: number[]) => allies.some((a) => a !== seat && this.hostile(seat, a));
 
     switch (this.me.role) {
       case 'lord':
-        return attacksMe ? 'enemy' : 'neutral';
       case 'loyalist':
         if (seat === lord) return 'friend';
-        return attacksLord || attacksMe ? 'enemy' : 'neutral';
-      case 'rebel': {
+        if (this.looksRebel(seat)) return 'enemy';
+        if (this.looksLoyal(seat)) return 'friend';
+        return attacksMe ? 'enemy' : 'neutral';
+      case 'rebel':
         if (seat === lord) return 'enemy';
-        // 攻击主公的人大概率是反贼同伴
-        const comrades = this.aliveOthers()
-          .filter((p) => p.seat !== lord && this.hostile(p.seat, lord) && !this.hostile(p.seat, me))
-          .map((p) => p.seat);
-        if (attacksMe || attacksAlly(comrades)) return 'enemy';
-        return comrades.includes(seat) ? 'friend' : 'neutral';
-      }
+        if (this.looksLoyal(seat)) return 'enemy';
+        if (this.looksRebel(seat)) return 'friend';
+        return attacksMe ? 'enemy' : 'neutral';
       case 'renegade': {
         const mode = this.renegadeMode();
         if (seat === lord) {
@@ -153,12 +195,9 @@ class Brain {
           return 'friend';
         }
         if (attacksMe) return 'enemy';
-        if (mode === 'lord') return attacksLord || other.role === 'rebel' ? 'enemy' : 'neutral';
-        if (mode === 'rebels') {
-          // 打过反贼（攻击过主公的人）的角色，大概率是忠臣
-          const rebelish = this.aliveOthers().filter((p) => p.seat !== lord && this.hostile(p.seat, lord));
-          return rebelish.some((r) => r.seat !== seat && this.hostile(seat, r.seat)) ? 'enemy' : 'neutral';
-        }
+        if (mode === 'lord') return this.looksRebel(seat) || this.view.players[seat].role === 'rebel' ? 'enemy' : 'neutral';
+        // 帮反贼时，攻击疑似忠臣
+        if (mode === 'rebels') return this.looksLoyal(seat) ? 'enemy' : 'neutral';
         return 'neutral'; // 第一个角色阵亡前按兵不动
       }
       default:

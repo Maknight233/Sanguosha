@@ -52,8 +52,10 @@ export interface GameView {
   players: PlayerPublic[];
   zhanUsed: number;
   zhanLimit: number;
-  /** 公开的敌对行为记录：hostility[a][b] = a 对 b 发起指向性攻击的次数 */
+  /** 公开的敌对行为记录：hostility[a][b] = a 对 b 发起指向性攻击的累计分量 */
   hostility: number[][];
+  /** 公开的帮助行为记录：help[a][b] = a 帮助 b（救人、回血、替人挡锦囊等）的累计分量 */
+  help: number[][];
   /** 阵亡顺序（座位号），公开信息 */
   deathOrder: number[];
 }
