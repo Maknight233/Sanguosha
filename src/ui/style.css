@@ -1,0 +1,138 @@
+:root {
+  --bg: #efe6d2;
+  --panel: #fffaf0;
+  --ink: #2b2118;
+  --muted: #8a7a66;
+  --border: #c9b79c;
+  --accent: #a0522d;
+  --wei: #3a5a9a;
+  --shu: #3f8a4a;
+  --wu: #b03a2e;
+  --qun: #7a6a55;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--ink); }
+button { font: inherit; padding: 6px 14px; border: 1px solid var(--accent); background: var(--panel); color: var(--accent); border-radius: 6px; cursor: pointer; }
+button:hover:not(:disabled) { background: #f6e7d3; }
+button:disabled { opacity: .4; cursor: not-allowed; }
+button.primary { background: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { background: #8b4513; }
+button.active { background: var(--accent); color: #fff; }
+button.big { font-size: 20px; padding: 12px 40px; }
+.muted { color: var(--muted); }
+.nowrap { white-space: nowrap; }
+table { border-collapse: collapse; }
+th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; vertical-align: top; }
+
+/* 菜单与规则 */
+.menu { text-align: center; padding-top: 18vh; }
+.menu h1 { font-size: 56px; letter-spacing: 8px; margin-bottom: 8px; }
+.menu-buttons { display: flex; flex-direction: column; gap: 16px; align-items: center; margin-top: 40px; }
+.rules { max-width: 960px; margin: 0 auto; padding: 24px; line-height: 1.7; }
+.rules table { width: 100%; background: var(--panel); }
+
+/* 牌桌布局 */
+.game-layout { display: grid; grid-template-columns: 1fr 300px; height: 100vh; }
+.table {
+  display: grid; gap: 10px; padding: 12px;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas: "tl . tr" "left center right" "me me me";
+  background: radial-gradient(ellipse at center, #5b7a52 0%, #3e5a3a 75%);
+  overflow: auto;
+}
+.area-top-left { grid-area: tl; justify-self: end; }
+.area-top-right { grid-area: tr; justify-self: start; }
+.area-left { grid-area: left; justify-self: start; align-self: center; }
+.area-right { grid-area: right; justify-self: end; align-self: center; }
+.area-center { grid-area: center; align-self: center; text-align: center; color: #fff; }
+.area-me { grid-area: me; }
+.center-info { background: rgba(0,0,0,.25); border-radius: 8px; padding: 8px 12px; display: inline-block; }
+.center-info .muted { color: #d8e6d0; }
+.speed { margin-top: 8px; }
+.speed button { padding: 2px 10px; margin-left: 4px; }
+
+/* 座位 */
+.seat { position: relative; width: 190px; background: var(--panel); border: 2px solid var(--border); border-radius: 10px; padding: 8px; font-size: 13px; }
+.seat.current, .player-area.current { box-shadow: 0 0 0 3px #f2c94c, 0 0 14px #f2c94c; }
+.seat.selectable { cursor: pointer; border-color: #2d9cdb; box-shadow: 0 0 0 2px #2d9cdb; }
+.seat.selected { border-color: #eb5757; box-shadow: 0 0 0 3px #eb5757; }
+.seat.dead { opacity: .55; filter: grayscale(.8); }
+.dead-mark { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) rotate(-15deg); font-size: 28px; color: #b03a2e; border: 3px solid #b03a2e; padding: 0 8px; border-radius: 6px; background: rgba(255,255,255,.7); }
+.seat-top, .seat-info { display: flex; justify-content: space-between; align-items: center; margin: 2px 0; }
+.seat-name { font-weight: bold; }
+.seat-skills { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.in-range { color: #c0392b; font-weight: bold; }
+.role-badge { font-size: 12px; padding: 0 6px; border-radius: 4px; background: #ddd; margin-left: 6px; }
+.role-lord { background: #f2c94c; }
+.role-loyalist { background: #f2994a; color: #fff; }
+.role-rebel { background: #27ae60; color: #fff; }
+.role-renegade { background: #2f80ed; color: #fff; }
+.faction-tag { font-size: 12px; padding: 0 5px; border-radius: 3px; color: #fff; background: var(--qun); }
+.faction-wei .faction-tag { background: var(--wei); }
+.faction-shu .faction-tag { background: var(--shu); }
+.faction-wu .faction-tag { background: var(--wu); }
+.faction-qun .faction-tag { background: var(--qun); }
+.hp { letter-spacing: 1px; }
+.hp-full { color: #d0312d; }
+.hp-empty { color: #ccc; }
+.equips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; font-size: 12px; }
+.equip-tag { background: #efe3c8; border-radius: 3px; padding: 0 4px; }
+
+/* 武将立绘占位（以后可替换为图片） */
+.general-portrait { height: 90px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: bold; color: #fff; background: var(--qun); overflow: hidden; }
+.general-portrait.small { height: 54px; font-size: 22px; margin: 4px 0; }
+.general-portrait img { width: 100%; height: 100%; object-fit: cover; }
+.faction-wei .general-portrait { background: linear-gradient(135deg, var(--wei), #22365e); }
+.faction-shu .general-portrait { background: linear-gradient(135deg, var(--shu), #24532b); }
+.faction-wu .general-portrait { background: linear-gradient(135deg, var(--wu), #6b231c); }
+.faction-qun .general-portrait { background: linear-gradient(135deg, var(--qun), #4a4034); }
+
+.general-grid { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.general-card { width: 220px; background: var(--panel); border: 2px solid var(--border); border-radius: 10px; padding: 8px; font-size: 13px; text-align: left; }
+.general-card.clickable { cursor: pointer; }
+.general-card.clickable:hover { border-color: var(--accent); transform: translateY(-3px); }
+.general-head { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+.skill-text { margin: 4px 0; line-height: 1.5; }
+
+/* 玩家区域 */
+.player-area { display: grid; grid-template-columns: 240px 1fr; gap: 12px; background: var(--panel); border: 2px solid var(--border); border-radius: 10px; padding: 10px; }
+.player-area.dead { opacity: .7; }
+.me-info { font-size: 13px; border-right: 1px solid var(--border); padding-right: 10px; }
+.me-info .seat-skills div { margin-top: 3px; }
+.prompt { font-weight: bold; margin-bottom: 6px; min-height: 22px; }
+.hand { display: flex; flex-wrap: wrap; gap: 6px; min-height: 120px; align-items: flex-start; }
+.actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+
+/* 卡牌（文字版卡面，预留图片位置） */
+.card { position: relative; width: 78px; height: 112px; border-radius: 7px; border: 2px solid #8b7355; background: #fffdf6; display: flex; flex-direction: column; align-items: center; justify-content: center; user-select: none; transition: transform .1s; }
+.card-basic { border-color: #8b6b3d; }
+.card-trick { border-color: #6a4c93; background: #fbf8ff; }
+.card-equip { border-color: #2c6e8f; background: #f6fbff; }
+.card.small { width: 60px; height: 86px; }
+.card.clickable { cursor: pointer; }
+.card.clickable:hover { transform: translateY(-4px); }
+.card.selected { transform: translateY(-12px); box-shadow: 0 0 0 3px #eb5757; }
+.card.disabled { opacity: .45; }
+.card-corner { position: absolute; top: 3px; left: 5px; font-size: 13px; font-weight: bold; }
+.card-corner.red { color: #d0312d; }
+.card-corner.black { color: #222; }
+.card-art { width: 100%; flex: 1; display: flex; align-items: center; justify-content: center; }
+.card-art img { max-width: 100%; max-height: 100%; }
+.card-name { font-size: 22px; font-weight: bold; writing-mode: vertical-rl; letter-spacing: 4px; }
+.card-kind { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+.order-wrap { position: relative; }
+.order-num { position: absolute; top: -8px; right: -8px; background: #eb5757; color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 22px; font-size: 13px; }
+
+/* 侧栏日志 */
+.side { display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--panel); min-height: 0; }
+.side-buttons { display: flex; gap: 8px; padding: 8px; border-bottom: 1px solid var(--border); }
+.log { flex: 1; overflow: auto; padding: 8px 10px; font-size: 13px; line-height: 1.6; min-height: 0; }
+.log-turn { margin-top: 6px; font-weight: bold; color: var(--accent); }
+
+/* 弹窗 */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 10; }
+.modal { background: var(--panel); border-radius: 12px; padding: 16px 20px; max-width: 90vw; max-height: 90vh; overflow: auto; }
+.modal h3 { margin-top: 0; }
+.choice-row { display: flex; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
+.modal .hand { margin: 10px 0; min-height: 0; }

@@ -1,0 +1,1016 @@
+import { BASIC_KEYS, buildDeck, cardDef, cardText, isRed } from '../data/cards';
+import { GENERAL_KEYS, generalDef } from '../data/generals';
+import { Rng } from './rng';
+import type {
+  Card,
+  CardPick,
+  Controller,
+  GameView,
+  LogEntry,
+  Phase,
+  PlayAction,
+  PlayOption,
+  Player,
+  Request,
+  RespondReason,
+  Response,
+  Role,
+  SkillOption,
+  Winner,
+} from './types';
+
+export const ROLE_NAME: Record<Role, string> = {
+  lord: '主公',
+  loyalist: '忠臣',
+  rebel: '反贼',
+  renegade: '内奸',
+};
+
+export const WINNER_NAME: Record<Winner, string> = {
+  lord: '主公与忠臣',
+  rebel: '反贼',
+  renegade: '内奸',
+};
+
+export const STANDARD_ROLES: Role[] = ['lord', 'loyalist', 'rebel', 'rebel', 'renegade'];
+export const INITIAL_HAND = 4;
+export const DRAW_PER_TURN = 2;
+/** 主公候选武将数 / 其他人候选武将数 */
+const LORD_CHOICES = 3;
+const OTHER_CHOICES = 2;
+
+/** 内部用于中断流程的胜负信号 */
+export class GameOver extends Error {
+  constructor(public readonly winner: Winner) {
+    super('game over');
+  }
+}
+
+export interface GameOptions {
+  controllers: Controller[];
+  seed?: number;
+  names?: string[];
+  /** 指定身份（按座位），不指定则随机 */
+  roles?: Role[];
+  /** 指定武将（按座位），不指定则由各玩家选将 */
+  generals?: string[];
+  /** 超过该回合数抛出异常，用于测试防止死循环 */
+  maxTurns?: number;
+  /** 关闭全部武将技能（用于测试基础规则） */
+  disableSkills?: boolean;
+}
+
+export class Game {
+  readonly rng: Rng;
+  readonly controllers: Controller[];
+  players: Player[] = [];
+  drawPile: Card[] = [];
+  discardPile: Card[] = [];
+  log: LogEntry[] = [];
+  current = 0;
+  phase: Phase = 'setup';
+  turn = 0;
+  zhanUsed = 0;
+  zhanLimit = 1;
+  winner: Winner | null = null;
+  /** 鱼鳞甲：各角色上次触发的回合 */
+  private yulinTurn = new Map<number, number>();
+  /** 公开的敌对行为记录（见 GameView.hostility） */
+  hostility: number[][] = [];
+  /** 阵亡顺序 */
+  deathOrder: number[] = [];
+  /** 本回合已发动的限一次技能 */
+  skillUsed = new Set<string>();
+  /** 张辽【先登】本回合是否生效 */
+  xiandeng = false;
+  private listeners: Array<() => void> = [];
+
+  constructor(private readonly opts: GameOptions) {
+    if (opts.controllers.length !== STANDARD_ROLES.length) {
+      throw new Error(`需要 ${STANDARD_ROLES.length} 个控制器`);
+    }
+    this.rng = new Rng(opts.seed ?? Date.now());
+    this.controllers = opts.controllers;
+  }
+
+  // ───────────── 事件与日志 ─────────────
+
+  subscribe(fn: () => void): () => void {
+    this.listeners.push(fn);
+    return () => {
+      this.listeners = this.listeners.filter((l) => l !== fn);
+    };
+  }
+
+  private emit(): void {
+    for (const l of this.listeners) l();
+  }
+
+  addLog(text: string): void {
+    this.log.push({ turn: this.turn, text });
+    this.emit();
+  }
+
+  who(seat: number): string {
+    const p = this.players[seat];
+    return p.general ? `${p.name}（${generalDef(p.general).name}）` : p.name;
+  }
+
+  /** 角色是否拥有某武将的技能（存活） */
+  is(seat: number, general: string): boolean {
+    const p = this.players[seat];
+    return !this.opts.disableSkills && p.alive && p.general === general;
+  }
+
+  /** 主公技：须为主公且为该武将 */
+  isLord(seat: number, general: string): boolean {
+    return this.is(seat, general) && this.players[seat].role === 'lord';
+  }
+
+  faction(seat: number) {
+    return generalDef(this.players[seat].general).faction;
+  }
+
+  markHostile(from: number, to: number): void {
+    if (from !== to && this.hostility[from]) this.hostility[from][to]++;
+  }
+
+  // ───────────── 对局流程 ─────────────
+
+  async start(): Promise<Winner> {
+    await this.setup();
+    return this.loop();
+  }
+
+  async setup(): Promise<void> {
+    const n = STANDARD_ROLES.length;
+    const roles = this.opts.roles ?? this.rng.shuffle([...STANDARD_ROLES]);
+    this.players = roles.map((role, seat) => ({
+      seat,
+      name: this.opts.names?.[seat] ?? `${seat + 1}号位`,
+      general: '',
+      role,
+      hp: 0,
+      maxHp: 0,
+      hand: [],
+      equips: {},
+      alive: true,
+    }));
+
+    this.hostility = roles.map(() => roles.map(() => 0));
+    const lordSeat = roles.indexOf('lord');
+    await this.chooseGenerals(lordSeat);
+
+    for (const p of this.players) {
+      p.maxHp = generalDef(p.general).hp + (p.role === 'lord' ? 1 : 0);
+      p.hp = p.maxHp;
+    }
+
+    this.drawPile = this.rng.shuffle(buildDeck());
+    this.discardPile = [];
+    for (let i = 0; i < n; i++) this.drawCards(this.players[(lordSeat + i) % n], INITIAL_HAND, true);
+
+    this.current = lordSeat;
+    this.addLog(`对局开始。主公是 ${this.who(lordSeat)}。`);
+  }
+
+  private async chooseGenerals(lordSeat: number): Promise<void> {
+    if (this.opts.generals) {
+      this.opts.generals.forEach((g, seat) => (this.players[seat].general = g));
+      return;
+    }
+    const pool = this.rng.shuffle([...GENERAL_KEYS]);
+    const take = (k: number) => pool.splice(0, k);
+
+    // 主公先选，结果公开；其余玩家再选
+    const lordOptions = take(LORD_CHOICES);
+    this.players[lordSeat].general = this.validChoice(
+      await this.ask(lordSeat, { type: 'chooseGeneral', options: lordOptions }),
+      lordOptions,
+    );
+    for (const p of this.players) {
+      if (p.seat === lordSeat) continue;
+      const options = take(OTHER_CHOICES);
+      p.general = this.validChoice(await this.ask(p.seat, { type: 'chooseGeneral', options }), options);
+    }
+  }
+
+  private validChoice(choice: string, options: string[]): string {
+    return options.includes(choice) ? choice : options[0];
+  }
+
+  async loop(): Promise<Winner> {
+    const maxTurns = this.opts.maxTurns ?? Infinity;
+    try {
+      for (;;) {
+        if (this.turn >= maxTurns) throw new Error(`超过最大回合数 ${maxTurns}`);
+        await this.runTurn(this.current);
+        this.current = this.nextAlive(this.current);
+      }
+    } catch (e) {
+      if (e instanceof GameOver) {
+        this.winner = e.winner;
+        this.phase = 'over';
+        this.addLog(`游戏结束，${WINNER_NAME[e.winner]}获胜！`);
+        return e.winner;
+      }
+      throw e;
+    }
+  }
+
+  async runTurn(seat: number): Promise<void> {
+    const p = this.players[seat];
+    this.turn++;
+    this.zhanUsed = 0;
+    this.zhanLimit = this.is(seat, 'zhaoyun') ? 2 : 1; // 七进
+    this.skillUsed.clear();
+    this.xiandeng = false;
+    this.addLog(`—— 第 ${this.turn} 回合：${this.who(seat)} ——`);
+
+    this.phase = 'prepare';
+    this.phase = 'draw';
+    await this.drawPhase(p);
+    if (!p.alive) return;
+
+    this.phase = 'play';
+    await this.playPhase(p);
+    if (!p.alive) return;
+
+    this.phase = 'discard';
+    await this.discardPhase(p);
+    if (!p.alive) return;
+
+    this.phase = 'end';
+    // 坐断
+    if (this.is(seat, 'sunquan') && p.hand.length < p.hp) {
+      this.addLog(`${this.who(seat)} 发动【坐断】。`);
+      this.drawCards(p, p.hp - p.hand.length);
+    }
+  }
+
+  async drawPhase(p: Player): Promise<void> {
+    const seat = p.seat;
+    if (this.is(seat, 'zhugeliang')) {
+      // 神算：观看 3 张，获得 2 张，余下置于牌堆底
+      const top = this.takeTop(3);
+      if (top.length <= 2) {
+        p.hand.push(...top);
+      } else {
+        const chosen = this.validSelection(
+          await this.ask(seat, { type: 'selectCards', cards: top, count: 2, reason: 'shensuan' }),
+          top,
+          2,
+        );
+        for (const c of top) (chosen.includes(c) ? p.hand : this.drawPile).unshift(c);
+        // 手牌顺序无关；落选的一张已放到牌堆底（数组开头）
+      }
+      this.addLog(`${this.who(seat)} 发动【神算】，观看牌堆顶 3 张牌并获得 2 张。`);
+      return;
+    }
+    if (this.is(seat, 'zhangliao')) {
+      const choice = await this.ask(seat, {
+        type: 'choose',
+        reason: 'xiandeng',
+        options: [
+          { id: 'yes', label: '发动【先登】：少摸 1 张，本回合与其他角色距离视为 1' },
+          { id: 'no', label: '正常摸牌' },
+        ],
+      });
+      if (choice === 'yes') {
+        this.xiandeng = true;
+        this.addLog(`${this.who(seat)} 发动【先登】。`);
+        this.drawCards(p, DRAW_PER_TURN - 1);
+        return;
+      }
+    }
+    this.drawCards(p, DRAW_PER_TURN);
+  }
+
+  /** 校验 selectCards 回答，不合法时取前 count 张 */
+  private validSelection(ids: number[], cards: Card[], count: number): Card[] {
+    const uniq = [...new Set(ids)];
+    const picked = uniq.map((id) => cards.find((c) => c.id === id)).filter((c): c is Card => !!c);
+    return picked.length === count ? picked : cards.slice(0, count);
+  }
+
+  // ───────────── 牌堆操作 ─────────────
+
+  /** 牌堆不足 n 张时，把弃牌堆洗匀后垫在牌堆底 */
+  ensureDrawPile(n: number): void {
+    if (this.drawPile.length >= n || this.discardPile.length === 0) return;
+    this.drawPile = [...this.rng.shuffle(this.discardPile), ...this.drawPile];
+    this.discardPile = [];
+    this.addLog('弃牌堆洗入牌堆。');
+  }
+
+  /** 取出牌堆顶 n 张（第一张为最上面） */
+  takeTop(n: number): Card[] {
+    this.ensureDrawPile(n);
+    return this.drawPile.splice(-Math.min(n, this.drawPile.length)).reverse();
+  }
+
+  /** 按给定顺序放回牌堆顶（第一张在最上面） */
+  putOnTop(cards: Card[]): void {
+    for (let i = cards.length - 1; i >= 0; i--) this.drawPile.push(cards[i]);
+  }
+
+  drawCards(p: Player, n: number, silent = false): Card[] {
+    const drawn = this.takeTop(n);
+    p.hand.push(...drawn);
+    if (!silent && drawn.length > 0) this.addLog(`${this.who(p.seat)} 摸了 ${drawn.length} 张牌。`);
+    return drawn;
+  }
+
+  /** 从手牌移除指定牌并返回，不存在则返回 null */
+  takeFromHand(p: Player, cardId: number): Card | null {
+    const i = p.hand.findIndex((c) => c.id === cardId);
+    return i < 0 ? null : p.hand.splice(i, 1)[0];
+  }
+
+  discard(cards: Card[]): void {
+    this.discardPile.push(...cards);
+  }
+
+  // ───────────── 距离 ─────────────
+
+  distance(from: number, to: number): number {
+    if (from === to) return 0;
+    if (this.xiandeng && from === this.current && this.is(from, 'zhangliao')) return 1; // 先登
+    const alive = this.players.filter((p) => p.alive).map((p) => p.seat);
+    const i = alive.indexOf(from);
+    const j = alive.indexOf(to);
+    if (i < 0 || j < 0) return Infinity;
+    const raw = Math.abs(i - j);
+    let d = Math.min(raw, alive.length - raw);
+    if (this.players[to].equips.horsePlus) d += 1;
+    if (this.players[from].equips.horseMinus) d -= 1;
+    return Math.max(1, d);
+  }
+
+  attackRange(seat: number): number {
+    const weapon = this.players[seat].equips.weapon;
+    const base = weapon ? cardDef(weapon.key).range ?? 1 : 1;
+    return base + (this.is(seat, 'lvbu') ? 1 : 0); // 骁勇
+  }
+
+  inAttackRange(from: number, to: number): boolean {
+    return from !== to && this.distance(from, to) <= this.attackRange(from);
+  }
+
+  nextAlive(seat: number): number {
+    const n = this.players.length;
+    for (let i = 1; i <= n; i++) {
+      const s = (seat + i) % n;
+      if (this.players[s].alive) return s;
+    }
+    return seat;
+  }
+
+  prevAlive(seat: number): number {
+    const n = this.players.length;
+    for (let i = 1; i <= n; i++) {
+      const s = (seat - i + n) % n;
+      if (this.players[s].alive) return s;
+    }
+    return seat;
+  }
+
+  /** 从 start 开始按座位顺序排列的存活角色 */
+  aliveFrom(start: number): number[] {
+    const n = this.players.length;
+    const res: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const s = (start + i) % n;
+      if (this.players[s].alive) res.push(s);
+    }
+    return res;
+  }
+
+  // ───────────── 出牌阶段 ─────────────
+
+  private hasCards(p: Player): boolean {
+    return p.hand.length > 0 || Object.values(p.equips).some(Boolean);
+  }
+
+  private weaponKey(seat: number): string | undefined {
+    return this.players[seat].equips.weapon?.key;
+  }
+
+  /** 可以成为该角色【斩】目标的角色 */
+  zhanTargets(seat: number): number[] {
+    const shenbi = this.weaponKey(seat) === 'shenbigong';
+    return this.players
+      .filter((t) => t.alive && this.inAttackRange(seat, t.seat))
+      .filter((t) => !(shenbi && this.distance(seat, t.seat) === 1))
+      .map((t) => t.seat);
+  }
+
+  /** 镔铁大戟：与主目标相邻（存活座位意义上）的其他角色 */
+  adjacentExtraTargets(user: number, target: number): number[] {
+    const res = new Set([this.nextAlive(target), this.prevAlive(target)]);
+    res.delete(user);
+    res.delete(target);
+    return [...res];
+  }
+
+  legalPlays(seat: number): PlayOption[] {
+    const p = this.players[seat];
+    const others = this.players.filter((t) => t.alive && t.seat !== seat);
+    const options: PlayOption[] = [];
+    for (const card of p.hand) {
+      const def = cardDef(card.key);
+      if (def.kind === 'equip') {
+        options.push({ cardId: card.id, targets: [] });
+        continue;
+      }
+      switch (card.key) {
+        case 'zhan': {
+          if (this.zhanUsed >= this.zhanLimit) break;
+          const targets = this.zhanTargets(seat);
+          if (targets.length === 0) break;
+          const opt: PlayOption = { cardId: card.id, targets };
+          if (this.weaponKey(seat) === 'bintieji') {
+            opt.extraTargets = Object.fromEntries(targets.map((t) => [t, this.adjacentExtraTargets(seat, t)]));
+          }
+          options.push(opt);
+          break;
+        }
+        case 'yao':
+          if (p.hp < p.maxHp) options.push({ cardId: card.id, targets: [] });
+          break;
+        case 'tiaobing':
+        case 'xiwen':
+        case 'xiuzheng':
+          options.push({ cardId: card.id, targets: [] });
+          break;
+        case 'jieying': {
+          const targets = others.filter((t) => this.hasCards(t)).map((t) => t.seat);
+          if (targets.length > 0) options.push({ cardId: card.id, targets });
+          break;
+        }
+        case 'cefan': {
+          const targets = others
+            .filter((t) => this.hasCards(t) && this.distance(seat, t.seat) <= 1)
+            .map((t) => t.seat);
+          if (targets.length > 0) options.push({ cardId: card.id, targets });
+          break;
+        }
+        case 'biwu':
+          if (others.length > 0) options.push({ cardId: card.id, targets: others.map((t) => t.seat) });
+          break;
+      }
+    }
+    return options;
+  }
+
+  legalSkills(seat: number): SkillOption[] {
+    const p = this.players[seat];
+    const res: SkillOption[] = [];
+    const others = this.players.filter((t) => t.alive && t.seat !== seat).map((t) => t.seat);
+    if (this.is(seat, 'liubei') && !this.skillUsed.has('kuanren') && p.hand.length >= 2) {
+      const targets = this.players.filter((t) => t.alive && t.hp < t.maxHp).map((t) => t.seat);
+      if (targets.length > 0) res.push({ skill: 'kuanren', cardCount: 2, targets });
+    }
+    if (this.is(seat, 'zhouyu') && !this.skillUsed.has('huoji') && hasSameSuitPair(p.hand) && others.length > 0) {
+      res.push({ skill: 'huoji', cardCount: 2, targets: others });
+    }
+    if (this.is(seat, 'diaochan') && !this.skillUsed.has('huoxin')) {
+      const second: Record<number, number[]> = {};
+      for (const a of others) {
+        const bs = others.filter((b) => b !== a && this.inAttackRange(a, b));
+        if (bs.length > 0) second[a] = bs;
+      }
+      const targets = Object.keys(second).map(Number);
+      if (targets.length > 0) res.push({ skill: 'huoxin', cardCount: 0, targets, secondTargets: second });
+    }
+    return res;
+  }
+
+  async playPhase(p: Player): Promise<void> {
+    // 上限防止控制器反复提交非法操作导致死循环
+    for (let guard = 0; guard < 200; guard++) {
+      if (!p.alive) return;
+      const options = this.legalPlays(p.seat);
+      const skills = this.legalSkills(p.seat);
+      if (options.length === 0 && skills.length === 0) return;
+      const action: PlayAction = await this.ask(p.seat, { type: 'play', options, skills });
+      if (action.type === 'end') return;
+      if (action.type === 'skill') {
+        const opt = skills.find((o) => o.skill === action.skill);
+        if (opt) await this.useSkill(p, opt, action.cards, action.targets);
+        continue;
+      }
+      const opt = options.find((o) => o.cardId === action.cardId);
+      if (!opt) continue;
+      if (opt.targets.length > 0 && (action.target === undefined || !opt.targets.includes(action.target))) continue;
+      let extra: number | undefined;
+      if (action.extraTarget !== undefined && action.target !== undefined) {
+        if (!opt.extraTargets?.[action.target]?.includes(action.extraTarget)) continue;
+        extra = action.extraTarget;
+      }
+      const card = this.takeFromHand(p, action.cardId)!;
+      await this.useCard(p, card, action.target, extra);
+    }
+  }
+
+  async useCard(p: Player, card: Card, target?: number, extraTarget?: number): Promise<void> {
+    const def = cardDef(card.key);
+    if (def.kind === 'equip') {
+      const slot = def.slot!;
+      const old = p.equips[slot];
+      if (old) this.discard([old]);
+      p.equips[slot] = card;
+      this.addLog(`${this.who(p.seat)} 装备了 ${cardText(card)}。`);
+      return;
+    }
+
+    this.discard([card]);
+    const user = p.seat;
+    switch (card.key) {
+      case 'zhan': {
+        this.zhanUsed++;
+        const targets = extraTarget === undefined ? [target!] : [target!, extraTarget];
+        this.addLog(`${this.who(user)} 对 ${targets.map((t) => this.who(t)).join('、')} 使用了 ${cardText(card)}。`);
+        for (const t of targets) this.markHostile(user, t);
+        for (const t of targets) await this.resolveZhan(user, t);
+        break;
+      }
+      case 'yao':
+        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`);
+        this.recover(user, 1);
+        break;
+      case 'tiaobing':
+        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`);
+        if (!(await this.nullified(card, user, user))) this.drawCards(p, 2);
+        break;
+      case 'jieying':
+      case 'cefan': {
+        const t = target!;
+        this.markHostile(user, t);
+        this.addLog(`${this.who(user)} 对 ${this.who(t)} 使用了 ${cardText(card)}。`);
+        if (await this.nullified(card, user, t)) break;
+        const taken = await this.pickCardFrom(user, t, card.key);
+        if (!taken) break;
+        if (card.key === 'jieying') {
+          this.discard([taken]);
+          this.addLog(`${this.who(user)} 弃置了 ${this.who(t)} 的 ${cardText(taken)}。`);
+        } else {
+          p.hand.push(taken);
+          this.addLog(`${this.who(user)} 获得了 ${this.who(t)} 的一张牌。`);
+        }
+        break;
+      }
+      case 'xiwen':
+        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`);
+        for (const t of this.aliveFrom(user).slice(1)) {
+          if (!this.players[t].alive || (await this.nullified(card, user, t))) continue;
+          const paid = await this.askForCard(t, BASIC_KEYS, { kind: 'xiwen', source: user });
+          if (paid) this.addLog(`${this.who(t)} 弃置了 ${cardText(paid[0])} 响应【檄文】。`);
+          else await this.damage(user, t, 1);
+        }
+        break;
+      case 'biwu': {
+        const t = target!;
+        this.markHostile(user, t);
+        this.addLog(`${this.who(user)} 对 ${this.who(t)} 使用了 ${cardText(card)}。`);
+        if (await this.nullified(card, user, t)) break;
+        let [turn, other] = [t, user];
+        for (;;) {
+          const z = await this.askForCard(turn, ['zhan'], { kind: 'biwu', opponent: other });
+          if (!z) {
+            await this.damage(other, turn, 1);
+            break;
+          }
+          this.addLog(`${this.who(turn)} 弃置了 ${cardText(z[0])}。`);
+          [turn, other] = [other, turn];
+        }
+        break;
+      }
+      case 'xiuzheng':
+        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`);
+        for (const t of this.aliveFrom(user)) {
+          if (await this.nullified(card, user, t)) continue;
+          const tp = this.players[t];
+          let choice = 'draw';
+          if (tp.hp < tp.maxHp) {
+            choice = await this.ask(t, {
+              type: 'choose',
+              reason: 'xiuzheng',
+              options: [
+                { id: 'recover', label: '回复 1 点体力' },
+                { id: 'draw', label: '摸一张牌' },
+              ],
+            });
+          }
+          if (choice === 'recover') this.recover(t, 1);
+          else this.drawCards(tp, 1);
+        }
+        break;
+      default:
+        throw new Error(`不能主动使用的卡牌: ${card.key}`);
+    }
+  }
+
+  /** 发动主动技能；参数不合法时什么也不做 */
+  async useSkill(p: Player, opt: SkillOption, cardIds: number[], targets: number[]): Promise<void> {
+    const ids = [...new Set(cardIds)];
+    const cards = ids.map((id) => p.hand.find((c) => c.id === id));
+    if (ids.length !== opt.cardCount || cards.some((c) => !c)) return;
+    const target = targets[0];
+    if (!opt.targets.includes(target)) return;
+    const seat = p.seat;
+
+    switch (opt.skill) {
+      case 'kuanren': {
+        this.skillUsed.add('kuanren');
+        for (const id of ids) this.takeFromHand(p, id);
+        this.discard(cards as Card[]);
+        this.addLog(`${this.who(seat)} 发动【宽仁】，弃置两张手牌，令 ${this.who(target)} 回复体力。`);
+        this.recover(target, 1);
+        break;
+      }
+      case 'huoji': {
+        const [a, b] = cards as Card[];
+        if (a.suit !== b.suit) return;
+        this.skillUsed.add('huoji');
+        this.markHostile(seat, target);
+        for (const id of ids) this.takeFromHand(p, id);
+        this.discard([a, b]);
+        this.addLog(`${this.who(seat)} 发动【火计】，弃置 ${cardText(a)}、${cardText(b)}，对 ${this.who(target)} 造成伤害。`);
+        await this.damage(seat, target, 1);
+        break;
+      }
+      case 'huoxin': {
+        const victim = targets[1];
+        if (!opt.secondTargets?.[target]?.includes(victim)) return;
+        this.skillUsed.add('huoxin');
+        this.markHostile(seat, victim);
+        this.addLog(`${this.who(seat)} 发动【惑心】，令 ${this.who(target)} 对 ${this.who(victim)} 使用【斩】。`);
+        const z = await this.askForCard(target, ['zhan'], { kind: 'huoxin', victim, from: seat });
+        if (z) {
+          this.addLog(`${this.who(target)} 对 ${this.who(victim)} 使用了 ${cardText(z[0])}。`);
+          this.markHostile(target, victim);
+          await this.resolveZhan(target, victim);
+        } else {
+          const a = this.players[target];
+          if (a.hand.length === 0 || !p.alive) break;
+          const [give] = this.validSelection(
+            await this.ask(target, { type: 'selectCards', cards: [...a.hand], count: 1, reason: 'huoxin' }),
+            a.hand,
+            1,
+          );
+          this.takeFromHand(a, give.id);
+          p.hand.push(give);
+          this.addLog(`${this.who(target)} 交给 ${this.who(seat)} 一张手牌。`);
+        }
+        break;
+      }
+    }
+  }
+
+  async resolveZhan(user: number, target: number): Promise<void> {
+    const t = this.players[target];
+    if (!t.alive) return;
+    const dodged = await this.askDodge(target, user);
+    if (dodged) {
+      // 七进
+      if (this.is(user, 'zhaoyun')) {
+        this.addLog(`${this.who(user)} 发动【七进】。`);
+        this.drawCards(this.players[user], 1);
+      }
+    } else {
+      const dealt = await this.damage(user, target, 1, 'zhan');
+      // 骁勇：弃置目标一张装备
+      const equips = Object.values(t.equips).filter((c): c is Card => !!c);
+      if (dealt > 0 && this.is(user, 'lvbu') && t.alive && equips.length > 0) {
+        const [pick] = this.validSelection(
+          await this.ask(user, { type: 'selectCards', cards: equips, count: 1, reason: 'xiaoyong' }),
+          equips,
+          1,
+        );
+        const slot = (Object.keys(t.equips) as Array<keyof Player['equips']>).find((k) => t.equips[k] === pick)!;
+        delete t.equips[slot];
+        this.discard([pick]);
+        this.addLog(`${this.who(user)} 发动【骁勇】，弃置了 ${this.who(target)} 的 ${cardText(pick)}。`);
+      }
+    }
+    const u = this.players[user];
+    if (u.alive && t.alive && this.weaponKey(user) === 'huanshoudao' && t.hand.length > u.hand.length) {
+      this.addLog(`${this.who(user)} 的【环首刀】生效。`);
+      this.drawCards(u, 1);
+    }
+  }
+
+  /** 询问【避】（含铁脊长枪与号令）；返回是否抵消 */
+  async askDodge(target: number, source: number): Promise<boolean> {
+    const dodge = await this.askForCard(target, ['bi'], { kind: 'dodge', source }, this.weaponKey(target) === 'tiejiqiang');
+    if (dodge) {
+      const how = dodge.length === 2 ? `将 ${dodge.map(cardText).join('、')} 当作【避】打出` : `打出 ${cardText(dodge[0])}`;
+      this.addLog(`${this.who(target)} ${how}，抵消了【斩】。`);
+      return true;
+    }
+    if (this.isLord(target, 'caocao')) {
+      for (const s of this.aliveFrom(target).slice(1)) {
+        if (this.faction(s) !== 'wei') continue;
+        const c = await this.askForCard(s, ['bi'], { kind: 'haoling', lord: target, source });
+        if (c) {
+          this.addLog(`${this.who(s)} 响应【号令】，替 ${this.who(target)} 打出 ${cardText(c[0])}，抵消了【斩】。`);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** 劫营/策反：由使用者选择目标的一张牌（手牌随机），从目标处移除并返回 */
+  async pickCardFrom(user: number, target: number, reason: 'jieying' | 'cefan'): Promise<Card | null> {
+    const t = this.players[target];
+    const equips = Object.values(t.equips).filter((c): c is Card => !!c);
+    if (t.hand.length === 0 && equips.length === 0) return null;
+    const pick: CardPick = await this.ask(user, {
+      type: 'chooseCard',
+      target,
+      handCount: t.hand.length,
+      equips,
+      reason,
+    });
+    if (pick.zone === 'equip') {
+      const slot = (Object.keys(t.equips) as Array<keyof Player['equips']>).find((k) => t.equips[k]?.id === pick.cardId);
+      if (slot) {
+        const card = t.equips[slot]!;
+        delete t.equips[slot];
+        return card;
+      }
+    }
+    if (t.hand.length > 0) return t.hand.splice(this.rng.int(t.hand.length), 1)[0];
+    const slot = (Object.keys(t.equips) as Array<keyof Player['equips']>).find((k) => t.equips[k])!;
+    const card = t.equips[slot]!;
+    delete t.equips[slot];
+    return card;
+  }
+
+  // ───────────── 响应 ─────────────
+
+  /** 锦囊对某目标生效前，依次询问【识破】；返回 true 表示效果被抵消 */
+  async nullified(trick: Card, user: number, target: number): Promise<boolean> {
+    if (this.is(user, 'zhugeliang')) return false; // 神算
+    let cancelled = false;
+    for (;;) {
+      let played = false;
+      for (const s of this.aliveFrom(this.current)) {
+        const c = await this.askForCard(s, ['shipo'], {
+          kind: 'shipo',
+          trick: trick.key,
+          user,
+          target,
+          countering: cancelled,
+        });
+        if (!c) continue;
+        const what = cancelled ? '【识破】' : `${cardText(trick)} 对 ${this.who(target)} 的效果`;
+        this.addLog(`${this.who(s)} 打出 ${cardText(c[0])}，抵消了${what}。`);
+        cancelled = !cancelled;
+        played = true;
+        break;
+      }
+      if (!played) return cancelled;
+    }
+  }
+
+  /**
+   * 询问某角色打出一张指定种类的牌；合法则移入弃牌堆并返回打出的牌。
+   * allowPair 为 true 时，也可以用两张同颜色手牌代替（铁脊长枪）。
+   */
+  async askForCard(seat: number, accept: string[], reason: RespondReason, allowPair = false): Promise<Card[] | null> {
+    const p = this.players[seat];
+    const pairOk = allowPair && hasSameColorPair(p.hand);
+    if (!p.hand.some((c) => accept.includes(c.key)) && !pairOk) return null;
+    const ans = await this.ask(seat, { type: 'respond', accept, reason, ...(pairOk ? { allowPair: true } : {}) });
+    if (ans === null) return null;
+    let cards: Card[];
+    if (Array.isArray(ans)) {
+      if (!pairOk || ans[0] === ans[1]) return null;
+      const pair = ans.map((id) => p.hand.find((c) => c.id === id));
+      if (pair.some((c) => !c) || isRed(pair[0]!) !== isRed(pair[1]!)) return null;
+      cards = pair as Card[];
+    } else {
+      const card = p.hand.find((c) => c.id === ans);
+      if (!card || !accept.includes(card.key)) return null;
+      cards = [card];
+    }
+    for (const c of cards) this.takeFromHand(p, c.id);
+    this.discard(cards);
+    return cards;
+  }
+
+  // ───────────── 体力 ─────────────
+
+  /** via：造成伤害的牌（用于鱼鳞甲判断） */
+  /** 返回实际造成的伤害值 */
+  async damage(source: number | null, target: number, amount: number, via?: 'zhan'): Promise<number> {
+    const t = this.players[target];
+    const armor = t.equips.armor?.key;
+
+    if (via === 'zhan' && armor === 'yulinjia' && this.yulinTurn.get(target) !== this.turn) {
+      this.yulinTurn.set(target, this.turn);
+      const paid = await this.askForCard(target, BASIC_KEYS, { kind: 'yulin', source });
+      if (paid) {
+        this.addLog(`${this.who(target)} 发动【鱼鳞甲】，弃置 ${cardText(paid[0])} 防止了伤害。`);
+        return 0;
+      }
+    }
+    if (armor === 'huxinjing' && t.hp === 1) {
+      amount -= 1;
+      const mirror = t.equips.armor!;
+      delete t.equips.armor;
+      this.discard([mirror]);
+      this.addLog(`${this.who(target)} 的【护心镜】令伤害 -1，随后碎裂（弃置）。`);
+      if (amount <= 0) return 0;
+    }
+
+    t.hp -= amount;
+    const from = source === null ? '' : `${this.who(source)} 对 `;
+    this.addLog(`${from}${this.who(target)} 造成 ${amount} 点伤害，体力 ${t.hp}/${t.maxHp}。`);
+    if (t.hp <= 0) await this.dying(target, source);
+
+    // 霸业
+    if (source !== null && this.is(source, 'caocao')) {
+      this.addLog(`${this.who(source)} 发动【霸业】。`);
+      this.drawCards(this.players[source], 1);
+    }
+    // 谋算
+    if (this.is(target, 'guojia')) await this.mousuan(target);
+    return amount;
+  }
+
+  async mousuan(seat: number): Promise<void> {
+    const top = this.takeTop(3);
+    if (top.length === 0) return;
+    const [got] = this.validSelection(
+      await this.ask(seat, { type: 'selectCards', cards: top, count: 1, reason: 'mousuan' }),
+      top,
+      1,
+    );
+    let rest = top.filter((c) => c !== got);
+    if (rest.length > 1) {
+      const order = await this.ask(seat, { type: 'orderCards', cards: rest, reason: 'mousuan' });
+      const sorted = this.validSelection(order, rest, rest.length);
+      rest = sorted;
+    }
+    this.putOnTop(rest);
+    this.players[seat].hand.push(got);
+    this.addLog(`${this.who(seat)} 发动【谋算】，观看牌堆顶 ${top.length} 张牌并获得 1 张。`);
+  }
+
+  recover(seat: number, amount: number): void {
+    const p = this.players[seat];
+    const before = p.hp;
+    p.hp = Math.min(p.maxHp, p.hp + amount);
+    if (p.hp <= before) return;
+    this.addLog(`${this.who(seat)} 回复 ${p.hp - before} 点体力，体力 ${p.hp}/${p.maxHp}。`);
+    // 宽仁（被动）
+    for (const s of this.aliveFrom(0)) {
+      if (s !== seat && this.is(s, 'liubei')) {
+        this.addLog(`${this.who(s)} 的【宽仁】触发。`);
+        this.drawCards(this.players[s], 1);
+      }
+    }
+  }
+
+  async dying(seat: number, killer: number | null): Promise<void> {
+    const t = this.players[seat];
+    this.addLog(`${this.who(seat)} 进入濒死状态！`);
+    for (const s of this.aliveFrom(this.current)) {
+      while (t.hp <= 0) {
+        const card = await this.askForCard(s, ['yao'], { kind: 'save', dying: seat });
+        if (!card) break;
+        this.addLog(`${this.who(s)} 对 ${this.who(seat)} 使用了 ${cardText(card[0])}。`);
+        this.recover(seat, 1);
+        // 桃园
+        if (s !== seat && this.isLord(seat, 'liubei') && this.faction(s) === 'shu') {
+          this.addLog(`${this.who(seat)} 的【桃园】触发。`);
+          this.drawCards(t, 1);
+        }
+      }
+      if (t.hp > 0) return;
+    }
+    await this.kill(seat, killer);
+  }
+
+  async kill(seat: number, killer: number | null): Promise<void> {
+    const t = this.players[seat];
+    t.alive = false;
+    this.deathOrder.push(seat);
+    this.addLog(`${this.who(seat)} 阵亡，身份是【${ROLE_NAME[t.role]}】。`);
+    this.discard(t.hand.splice(0));
+    this.discard(this.takeAllEquips(t));
+
+    const winner = this.checkVictory();
+    if (winner) throw new GameOver(winner);
+
+    // 江东
+    if (this.faction(seat) === 'wu') {
+      for (const s of this.aliveFrom(0)) {
+        if (this.isLord(s, 'sunquan')) {
+          this.addLog(`${this.who(s)} 的【江东】触发。`);
+          this.recover(s, 1);
+        }
+      }
+    }
+
+    if (killer === null || killer === seat) return;
+    const k = this.players[killer];
+    if (!k.alive) return;
+    if (t.role === 'rebel') {
+      this.addLog(`${this.who(killer)} 击杀反贼，奖励摸 3 张牌。`);
+      this.drawCards(k, 3);
+    } else if (t.role === 'loyalist' && k.role === 'lord') {
+      this.addLog(`主公误杀忠臣，弃置所有手牌和装备！`);
+      this.discard(k.hand.splice(0));
+      this.discard(this.takeAllEquips(k));
+    }
+  }
+
+  private takeAllEquips(p: Player): Card[] {
+    const cards = Object.values(p.equips).filter((c): c is Card => !!c);
+    p.equips = {};
+    return cards;
+  }
+
+  checkVictory(): Winner | null {
+    const alive = this.players.filter((p) => p.alive);
+    const lord = this.players.find((p) => p.role === 'lord')!;
+    if (!lord.alive) {
+      return alive.length === 1 && alive[0].role === 'renegade' ? 'renegade' : 'rebel';
+    }
+    if (alive.every((p) => p.role === 'lord' || p.role === 'loyalist')) return 'lord';
+    return null;
+  }
+
+  // ───────────── 弃牌阶段 ─────────────
+
+  async discardPhase(p: Player): Promise<void> {
+    const excess = p.hand.length - Math.max(0, p.hp);
+    if (excess <= 0) return;
+    const ids = await this.ask(p.seat, { type: 'discard', count: excess });
+    const unique = [...new Set(ids)];
+    const valid = unique.length === excess && unique.every((id) => p.hand.some((c) => c.id === id));
+    const chosen = valid ? unique : p.hand.slice(-excess).map((c) => c.id);
+    const cards = chosen.map((id) => this.takeFromHand(p, id)!);
+    this.discard(cards);
+    this.addLog(`${this.who(p.seat)} 弃置了 ${cards.map(cardText).join('、')}。`);
+  }
+
+  // ───────────── 视图与询问 ─────────────
+
+  async ask<R extends Request>(seat: number, req: R): Promise<Response<R>> {
+    return this.controllers[seat].decide(this.view(seat), req);
+  }
+
+  view(seat: number): GameView {
+    return {
+      me: seat,
+      current: this.current,
+      phase: this.phase,
+      turn: this.turn,
+      drawPileCount: this.drawPile.length,
+      discardPileCount: this.discardPile.length,
+      zhanUsed: this.zhanUsed,
+      zhanLimit: this.zhanLimit,
+      hostility: this.hostility.map((row) => [...row]),
+      deathOrder: [...this.deathOrder],
+      players: this.players.map((p) => ({
+        seat: p.seat,
+        name: p.name,
+        general: p.general,
+        role: p.seat === seat || p.role === 'lord' || !p.alive ? p.role : null,
+        hp: p.hp,
+        maxHp: p.maxHp,
+        alive: p.alive,
+        handCount: p.hand.length,
+        equips: { ...p.equips },
+        hand: p.seat === seat ? [...p.hand] : null,
+      })),
+    };
+  }
+
+  /** 所有牌的总数（用于校验牌不会凭空增减） */
+  totalCards(): number {
+    let n = this.drawPile.length + this.discardPile.length;
+    for (const p of this.players) n += p.hand.length + Object.values(p.equips).filter(Boolean).length;
+    return n;
+  }
+}
+
+function hasSameColorPair(hand: Card[]): boolean {
+  const red = hand.filter(isRed).length;
+  return red >= 2 || hand.length - red >= 2;
+}
+
+function hasSameSuitPair(hand: Card[]): boolean {
+  const seen = new Set<string>();
+  for (const c of hand) {
+    if (seen.has(c.suit)) return true;
+    seen.add(c.suit);
+  }
+  return false;
+}
