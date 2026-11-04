@@ -104,13 +104,24 @@ describe('第二批武将', () => {
     expect(game.players[1].hand).toHaveLength(0);
   });
 
-  it('华佗【养生】：准备阶段已受伤时弃一张手牌回复 1 点体力', async () => {
+  it('华佗【养生】：准备阶段已受伤时弃一张手牌回复 1 点体力，然后摸一张牌', async () => {
     const { game } = await setup(gens({ 3: 'huatuo' }));
     const card = give(game, 3, 'zhan');
     game.players[3].hp = 1;
-    await game.runTurn(3);
+    await game.yangsheng(game.players[3]);
     expect(game.players[3].hp).toBe(2);
     expect(game.discardPile).toContain(card);
+    expect(game.players[3].hand).toHaveLength(1);
+    expect(game.players[3].hand[0]).not.toBe(card);
+  });
+
+  it('华佗【养生】弃置【药】时不摸牌', async () => {
+    const { game } = await setup(gens({ 3: 'huatuo' }));
+    give(game, 3, 'yao');
+    game.players[3].hp = 1;
+    await game.yangsheng(game.players[3]);
+    expect(game.players[3].hp).toBe(2);
+    expect(game.players[3].hand).toHaveLength(0);
   });
 
   it('华佗满体力或没有手牌时不询问【养生】', async () => {

@@ -131,6 +131,8 @@ export class Game {
   skillUsed = new Set<string>();
   /** 张辽【先登】本回合是否生效 */
   xiandeng = false;
+  /** 本回合【神算】是否已因使用锦囊摸过牌 */
+  shensuanDrawn = false;
   /** 本回合当前角色是否对其他角色造成过伤害（司马懿【韬晦】） */
   dealtDamageThisTurn = false;
   /** 张角【聚众】已增加的体力上限 */
@@ -285,6 +287,7 @@ export class Game {
     if (this.guoguan(seat)) this.zhanLimit += 1; // 过关
     this.skillUsed.clear();
     this.xiandeng = false;
+    this.shensuanDrawn = false;
     this.dealtDamageThisTurn = false;
     this.addLog(`—— 第 ${this.turn} 回合：${this.who(seat)} ——`);
 
@@ -320,7 +323,7 @@ export class Game {
     return this.is(seat, 'guanyu') && this.players.filter((p) => p.alive).length <= 3;
   }
 
-  /** 华佗【养生】：准备阶段已受伤时，可弃一张手牌回复 1 点体力 */
+  /** 华佗【养生】：准备阶段已受伤时，可弃一张手牌回复 1 点体力，然后摸一张牌（弃【药】时不摸） */
   async yangsheng(p: Player): Promise<void> {
     if (p.hp >= p.maxHp || p.hand.length === 0) return;
     const options = [
@@ -333,6 +336,7 @@ export class Game {
     this.discard([card]);
     this.addLog(`${this.who(p.seat)} 发动【养生】，弃置了 ${cardText(card)}。`);
     this.recover(p.seat, 1);
+    if (card.key !== 'yao') this.drawCards(p, 1); // 弃【药】时不摸牌
   }
 
   async drawPhase(p: Player): Promise<void> {
@@ -608,6 +612,12 @@ export class Game {
 
     this.discard([card]);
     const user = p.seat;
+    // 神算：每回合第一次使用锦囊时摸一张牌
+    if (def.kind === 'trick' && this.is(user, 'zhugeliang') && !this.shensuanDrawn) {
+      this.shensuanDrawn = true;
+      this.addLog(`${this.who(user)} 的【神算】生效，摸一张牌。`);
+      this.drawCards(p, 1);
+    }
     switch (card.key) {
       case 'zhan': {
         this.zhanUsed++;
@@ -755,13 +765,7 @@ export class Game {
     const t = this.players[target];
     if (!t.alive) return;
     const dodged = await this.askDodge(target, user);
-    if (dodged) {
-      // 七进
-      if (this.is(user, 'zhaoyun')) {
-        this.addLog(`${this.who(user)} 发动【七进】。`);
-        this.drawCards(this.players[user], 1);
-      }
-    } else {
+    if (!dodged) {
       const dealt = await this.damage(user, target, 1, 'zhan');
       // 先登：发动的回合，【斩】造成伤害后摸一张牌
       if (dealt > 0 && this.xiandeng && user === this.current && this.is(user, 'zhangliao') && this.players[user].alive) {

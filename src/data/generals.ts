@@ -41,11 +41,11 @@ const defs: GeneralDef[] = [
   },
   {
     key: 'zhugeliang', name: '诸葛亮', faction: 'shu', hp: 4,
-    skills: [{ name: '神算', description: '摸牌阶段，你改为观看牌堆顶 3 张牌，获得其中 2 张，另一张置于牌堆底；你使用的锦囊不能被【识破】抵消。' }],
+    skills: [{ name: '神算', description: '摸牌阶段，你改为观看牌堆顶 3 张牌，获得其中 2 张，另一张置于牌堆底；你使用的锦囊不能被【识破】抵消；你每回合第一次使用锦囊时，摸一张牌。' }],
   },
   {
     key: 'zhaoyun', name: '赵云', faction: 'shu', hp: 4,
-    skills: [{ name: '七进', description: '你每回合可以多使用 1 张【斩】；你的【斩】被【避】抵消后，你摸一张牌。' }],
+    skills: [{ name: '七进', description: '你每回合可以多使用 1 张【斩】。' }],
   },
   {
     key: 'sunquan', name: '孙权', faction: 'wu', hp: 4,
@@ -84,7 +84,7 @@ const defs: GeneralDef[] = [
   },
   {
     key: 'huatuo', name: '华佗', faction: 'qun', hp: 4,
-    skills: [{ name: '养生', description: '准备阶段，若你已受伤，你可以弃置一张手牌，回复 1 点体力。' }],
+    skills: [{ name: '养生', description: '准备阶段，若你已受伤，你可以弃置一张手牌，回复 1 点体力，然后若弃置的不是【药】，摸一张牌。' }],
   },
   {
     key: 'zhangjiao', name: '张角', faction: 'qun', hp: 4,

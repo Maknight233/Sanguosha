@@ -149,11 +149,23 @@ describe('蜀', () => {
     const tb = give(game, 1, 'tiaobing');
     game.takeFromHand(game.players[1], tb.id);
     await game.useCard(game.players[1], tb);
-    expect(game.players[1].hand).toHaveLength(2);
+    expect(game.players[1].hand).toHaveLength(3); // 调兵 2 张 + 神算 1 张
     expect(game.players[2].hand).toEqual([sp]);
   });
 
-  it('赵云【七进】：可用 2 张【斩】，被【避】抵消后摸牌', async () => {
+  it('诸葛亮【神算】：每回合只有第一次使用锦囊时摸牌', async () => {
+    const { game } = await setup(gens({ 1: 'zhugeliang' }));
+    game.current = 1;
+    game.shensuanDrawn = false;
+    for (let i = 0; i < 2; i++) {
+      const tb = give(game, 1, 'tiaobing');
+      game.takeFromHand(game.players[1], tb.id);
+      await game.useCard(game.players[1], tb);
+    }
+    expect(game.players[1].hand).toHaveLength(5); // 2 + 1 + 2
+  });
+
+  it('赵云【七进】：可用 2 张【斩】，被【避】抵消后不摸牌', async () => {
     const { game, ctrls } = await setup(gens({ 4: 'zhaoyun' }));
     game.current = 4;
     await game.runTurn(4);
@@ -162,7 +174,7 @@ describe('蜀', () => {
     const bi = give(game, 0, 'bi');
     ctrls[0].handler = (_v, req) => (req.type === 'respond' ? bi.id : undefined);
     await game.resolveZhan(4, 0);
-    expect(game.players[4].hand).toHaveLength(handBefore + 1);
+    expect(game.players[4].hand).toHaveLength(handBefore);
   });
 });
 
