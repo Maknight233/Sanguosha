@@ -309,7 +309,7 @@ export class Game {
     // 坐断
     if (this.is(seat, 'sunquan') && p.hand.length < p.hp) {
       this.addLog(`${this.who(seat)} 发动【坐断】。`);
-      this.drawCards(p, p.hp - p.hand.length);
+      this.drawCards(p, 1);
     }
     // 韬晦
     if (this.is(seat, 'simayi') && !this.dealtDamageThisTurn) {
@@ -731,6 +731,8 @@ export class Game {
         this.discard([a, b]);
         this.addLog(`${this.who(seat)} 发动【火计】，弃置 ${cardText(a)}、${cardText(b)}，对 ${this.who(target)} 造成伤害。`);
         await this.damage(seat, target, 1);
+        // 弃置的是红色牌（同花色，两张同色）时摸一张牌
+        if (isRed(a) && p.alive) this.drawCards(p, 1);
         break;
       }
       case 'huoxin': {

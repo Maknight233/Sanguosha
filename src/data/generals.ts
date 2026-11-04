@@ -50,13 +50,13 @@ const defs: GeneralDef[] = [
   {
     key: 'sunquan', name: '孙权', faction: 'wu', hp: 4,
     skills: [
-      { name: '坐断', description: '结束阶段，若你的手牌数少于体力值，你将手牌摸至体力值。' },
+      { name: '坐断', description: '结束阶段，若你的手牌数少于体力值，你摸一张牌。' },
       { name: '江东', description: '主公技：吴势力角色阵亡时，你回复 1 点体力。', lordSkill: true },
     ],
   },
   {
     key: 'zhouyu', name: '周瑜', faction: 'wu', hp: 4,
-    skills: [{ name: '火计', description: '出牌阶段限一次，你可以弃置两张同花色手牌，对一名其他角色造成 1 点伤害。' }],
+    skills: [{ name: '火计', description: '出牌阶段限一次，你可以弃置两张同花色手牌，对一名其他角色造成 1 点伤害；若弃置的是红色牌，你摸一张牌。' }],
   },
   {
     key: 'lvbu', name: '吕布', faction: 'qun', hp: 4,

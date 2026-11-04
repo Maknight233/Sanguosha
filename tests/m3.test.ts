@@ -179,11 +179,19 @@ describe('蜀', () => {
 });
 
 describe('吴', () => {
-  it('孙权【坐断】：结束阶段摸至体力值', async () => {
+  it('孙权【坐断】：结束阶段手牌少于体力值时摸一张牌', async () => {
     const { game } = await setup(gens({ 4: 'sunquan' }));
     game.current = 4;
     await game.runTurn(4);
-    expect(game.players[4].hand).toHaveLength(4);
+    expect(game.players[4].hand).toHaveLength(3); // 摸牌阶段 2 张 + 坐断 1 张
+  });
+
+  it('孙权手牌不少于体力值时不发动【坐断】', async () => {
+    const { game } = await setup(gens({ 4: 'sunquan' }));
+    game.players[4].hp = 2;
+    game.current = 4;
+    await game.runTurn(4);
+    expect(game.players[4].hand).toHaveLength(2);
   });
 
   it('孙权【江东】：吴势力角色阵亡时主公回复', async () => {
@@ -195,7 +203,7 @@ describe('吴', () => {
     expect(game.players[0].hp).toBe(4);
   });
 
-  it('周瑜【火计】：弃两张同花色手牌造成伤害', async () => {
+  it('周瑜【火计】：弃两张同花色手牌造成伤害（黑色不摸牌）', async () => {
     const { game, ctrls } = await setup(gens({ 0: 'zhouyu' }));
     const a = game.drawPile.find((c) => c.suit === 'spade')!;
     const b = game.drawPile.find((c) => c.suit === 'spade' && c !== a)!;
@@ -209,6 +217,22 @@ describe('吴', () => {
     await game.playPhase(game.players[0]);
     expect(game.players[3].hp).toBe(3);
     expect(game.players[0].hand).toHaveLength(0);
+  });
+
+  it('【火计】弃置红色牌时摸一张牌', async () => {
+    const { game, ctrls } = await setup(gens({ 0: 'zhouyu' }));
+    const a = game.drawPile.find((c) => c.suit === 'heart')!;
+    const b = game.drawPile.find((c) => c.suit === 'heart' && c !== a)!;
+    for (const c of [a, b]) {
+      game.drawPile.splice(game.drawPile.indexOf(c), 1);
+      game.players[0].hand.push(c);
+    }
+    let n = 0;
+    ctrls[0].handler = (_v, req) =>
+      req.type === 'play' ? (n++ === 0 ? { type: 'skill', skill: 'huoji', cards: [a.id, b.id], targets: [3] } : { type: 'end' }) : undefined;
+    await game.playPhase(game.players[0]);
+    expect(game.players[3].hp).toBe(3);
+    expect(game.players[0].hand).toHaveLength(1);
   });
 
   it('【火计】花色不同则无效', async () => {
