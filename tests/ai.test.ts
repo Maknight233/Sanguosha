@@ -57,6 +57,28 @@ describe('基础 AI：出牌', () => {
   });
 });
 
+describe('基础 AI：先登', () => {
+  const ask: Request = {
+    type: 'choose',
+    reason: 'xiandeng',
+    options: [
+      { id: 'yes', label: '' },
+      { id: 'no', label: '' },
+    ],
+  };
+
+  it('敌人都够不着时发动；敌人在攻击范围内且只有 1 张【斩】时不发动', async () => {
+    // 2 号反贼：主公距离 2，够不着
+    const { game } = await makeGame();
+    give(game, 2, 'zhan');
+    expect(await ai.decide(game.view(2), ask)).toBe('yes');
+    equip(game, 2, 'huanshoudao'); // 射程 2，够得着主公
+    expect(await ai.decide(game.view(2), ask)).toBe('no');
+    give(game, 2, 'zhan'); // 2 张【斩】：发动以多出一次
+    expect(await ai.decide(game.view(2), ask)).toBe('yes');
+  });
+});
+
 describe('基础 AI：响应', () => {
   it('被【斩】时出【避】', async () => {
     const { game } = await makeGame();

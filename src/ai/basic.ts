@@ -1,4 +1,5 @@
 import { BASIC_KEYS, cardDef, isRed } from '../data/cards';
+import { seatDistance } from '../engine/game';
 import type {
   Card,
   CardPick,
@@ -24,9 +25,19 @@ type Relation = 'friend' | 'enemy' | 'neutral';
 
 /** 选将偏好：越靠前越优先 */
 const GENERAL_PREFERENCE = [
-  'zhugeliang', 'guojia', 'caocao', 'liubei', 'zhaoyun', 'sunquan', 'ganning', 'lvbu', 'zhouyu', 'huatuo',
-  'luxun', 'zhangjiao', 'guanyu', 'simayi', 'diaochan', 'zhangliao',
+  'zhugeliang', 'guojia', 'caocao', 'liubei', 'zhaoyun', 'sunquan', 'ganning', 'lvbu', 'zhangliao', 'zhouyu',
+  'huatuo', 'luxun', 'zhangjiao', 'guanyu', 'simayi', 'diaochan',
 ];
+/** 选将扰动幅度：偏好表中相差不到这么多名的武将可能互换顺序 */
+const PICK_JITTER = 8;
+
+/** 简单字符串哈希（FNV-1a），用于不依赖随机数的确定性扰动 */
+function hash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619) >>> 0;
+  return h;
+}
+
 /** 内奸要活到最后：按模拟中内奸胜率排序（关羽、刘备、司马懿明显更高） */
 const RENEGADE_PREFERENCE = ['guanyu', 'liubei', 'simayi', 'zhaoyun', 'huatuo'];
 
@@ -544,7 +555,9 @@ class Brain {
   private chooseGeneral(options: string[]): string {
     const rank = (g: string) => {
       const r = this.me.role === 'renegade' ? RENEGADE_PREFERENCE.indexOf(g) : -1;
-      return r >= 0 ? r - 100 : GENERAL_PREFERENCE.indexOf(g);
+      if (r >= 0) return r - 100;
+      // 偏好表排名 + 确定性扰动（0 ~ PICK_JITTER），让排名相近的武将都有机会被选，排最后的也不会永远落选
+      return GENERAL_PREFERENCE.indexOf(g) + (hash(`${this.me.seat}|${options.join(',')}|${g}`) % 1000) / 1000 * PICK_JITTER;
     };
     return [...options].sort((a, b) => rank(a) - rank(b))[0];
   }
@@ -557,10 +570,13 @@ class Brain {
       const c = this.cheapest(this.hand, 1)[0];
       return c && options.some((o) => o.id === String(c.id)) ? String(c.id) : 'no';
     }
-    // 先登：有【斩】、没有神臂弓、且有够不着的敌人时发动
+    // 先登：有【斩】、没有神臂弓、有敌人，且敌人都够不着或手里有 2 张以上【斩】时发动
     const hasZhan = this.hand.some((c) => c.key === 'zhan');
     const shenbi = this.me.equips.weapon?.key === 'shenbigong';
-    const farEnemy = this.aliveOthers().some((p) => this.isEnemy(p.seat));
-    return hasZhan && !shenbi && farEnemy && options.some((o) => o.id === 'yes') ? 'yes' : 'no';
+    const range = this.me.equips.weapon ? cardDef(this.me.equips.weapon.key).range ?? 1 : 1;
+    const enemies = this.aliveOthers().filter((p) => this.isEnemy(p.seat));
+    const inRange = (s: number) => seatDistance(this.view.players, this.me.seat, s) <= range;
+    const worth = !enemies.some((p) => inRange(p.seat)) || this.hand.filter((c) => c.key === 'zhan').length >= 2;
+    return hasZhan && !shenbi && enemies.length > 0 && worth && options.some((o) => o.id === 'yes') ? 'yes' : 'no';
   }
 }

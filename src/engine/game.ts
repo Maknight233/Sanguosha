@@ -68,6 +68,24 @@ export const HELP_WEIGHT = {
 export const HARMFUL_TRICK_KEYS = new Set(['jieying', 'cefan', 'xiwen', 'biwu']);
 
 /** 内部用于中断流程的胜负信号 */
+/** 座位距离（只用公开信息：存活、坐骑；不含【先登】等技能），引擎与 AI 共用 */
+export function seatDistance(
+  players: ReadonlyArray<{ seat: number; alive: boolean; equips: Partial<Record<string, unknown>> }>,
+  from: number,
+  to: number,
+): number {
+  if (from === to) return 0;
+  const alive = players.filter((p) => p.alive).map((p) => p.seat);
+  const i = alive.indexOf(from);
+  const j = alive.indexOf(to);
+  if (i < 0 || j < 0) return Infinity;
+  const raw = Math.abs(i - j);
+  let d = Math.min(raw, alive.length - raw);
+  if (players[to].equips.horsePlus) d += 1;
+  if (players[from].equips.horseMinus) d -= 1;
+  return Math.max(1, d);
+}
+
 export class GameOver extends Error {
   constructor(public readonly winner: Winner) {
     super('game over');
@@ -341,12 +359,13 @@ export class Game {
         type: 'choose',
         reason: 'xiandeng',
         options: [
-          { id: 'yes', label: '发动【先登】：少摸 1 张，本回合与其他角色距离视为 1' },
+          { id: 'yes', label: '发动【先登】：少摸 1 张，本回合与其他角色距离视为 1、可多用 1 张【斩】' },
           { id: 'no', label: '正常摸牌' },
         ],
       });
       if (choice === 'yes') {
         this.xiandeng = true;
+        this.zhanLimit += 1;
         this.addLog(`${this.who(seat)} 发动【先登】。`);
         this.drawCards(p, DRAW_PER_TURN - 1);
         return;
@@ -407,15 +426,7 @@ export class Game {
   distance(from: number, to: number): number {
     if (from === to) return 0;
     if (this.xiandeng && from === this.current && this.is(from, 'zhangliao')) return 1; // 先登
-    const alive = this.players.filter((p) => p.alive).map((p) => p.seat);
-    const i = alive.indexOf(from);
-    const j = alive.indexOf(to);
-    if (i < 0 || j < 0) return Infinity;
-    const raw = Math.abs(i - j);
-    let d = Math.min(raw, alive.length - raw);
-    if (this.players[to].equips.horsePlus) d += 1;
-    if (this.players[from].equips.horseMinus) d -= 1;
-    return Math.max(1, d);
+    return seatDistance(this.players, from, to);
   }
 
   attackRange(seat: number): number {
@@ -752,6 +763,11 @@ export class Game {
       }
     } else {
       const dealt = await this.damage(user, target, 1, 'zhan');
+      // 先登：发动的回合，【斩】造成伤害后摸一张牌
+      if (dealt > 0 && this.xiandeng && user === this.current && this.is(user, 'zhangliao') && this.players[user].alive) {
+        this.addLog(`${this.who(user)} 的【先登】生效，摸一张牌。`);
+        this.drawCards(this.players[user], 1);
+      }
       // 骁勇：弃置目标一张装备
       const equips = Object.values(t.equips).filter((c): c is Card => !!c);
       if (dealt > 0 && this.is(user, 'lvbu') && t.alive && equips.length > 0) {

@@ -69,6 +69,29 @@ describe('魏', () => {
     expect(game.distance(0, 2)).toBe(2); // 只影响张辽到别人的距离
   });
 
+  it('张辽【先登】：本回合可多用 1 张【斩】，【斩】造成伤害后摸一张牌', async () => {
+    const { game, ctrls } = await setup(gens({ 2: 'zhangliao' }));
+    ctrls[2].handler = (_v, req) => (req.type === 'choose' ? 'yes' : undefined);
+    game.current = 2;
+    const limit = game.zhanLimit;
+    await game.drawPhase(game.players[2]);
+    expect(game.zhanLimit).toBe(limit + 1);
+    const before = game.players[2].hand.length;
+    await game.resolveZhan(2, 0); // 主公没有【避】
+    expect(game.players[0].hp).toBe(4);
+    expect(game.players[2].hand).toHaveLength(before + 1);
+  });
+
+  it('张辽未发动【先登】时，【斩】造成伤害不摸牌', async () => {
+    const { game, ctrls } = await setup(gens({ 2: 'zhangliao' }));
+    ctrls[2].handler = (_v, req) => (req.type === 'choose' ? 'no' : undefined);
+    game.current = 2;
+    await game.drawPhase(game.players[2]);
+    const before = game.players[2].hand.length;
+    await game.resolveZhan(2, 1);
+    expect(game.players[2].hand).toHaveLength(before);
+  });
+
   it('张辽不发动【先登】时正常摸 2 张', async () => {
     const { game, ctrls } = await setup(gens({ 2: 'zhangliao' }));
     ctrls[2].handler = (_v, req) => (req.type === 'choose' ? 'no' : undefined);

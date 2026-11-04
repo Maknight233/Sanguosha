@@ -30,7 +30,7 @@ const defs: GeneralDef[] = [
   },
   {
     key: 'zhangliao', name: '张辽', faction: 'wei', hp: 4,
-    skills: [{ name: '先登', description: '摸牌阶段你可以少摸 1 张牌，然后本回合你与其他角色的距离视为 1。' }],
+    skills: [{ name: '先登', description: '摸牌阶段你可以少摸 1 张牌，然后本回合你与其他角色的距离视为 1、可以多使用 1 张【斩】，且你的【斩】造成伤害后摸一张牌。' }],
   },
   {
     key: 'liubei', name: '刘备', faction: 'shu', hp: 4,
