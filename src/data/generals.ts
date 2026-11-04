@@ -35,12 +35,12 @@ const defs: GeneralDef[] = [
   {
     key: 'liubei', name: '刘备', faction: 'shu', hp: 4,
     skills: [
-      { name: '宽仁', description: '出牌阶段限一次，你可以弃置两张手牌，令一名已受伤的角色回复 1 点体力；其他角色回复体力时，你摸一张牌。' },
+      { name: '宽仁', description: '出牌阶段限一次，你可以弃置一张手牌，令一名已受伤的其他角色回复 1 点体力。' },
       { name: '桃园', description: '主公技：其他蜀势力角色对你使用【药】时，你额外摸一张牌。', lordSkill: true },
     ],
   },
   {
-    key: 'zhugeliang', name: '诸葛亮', faction: 'shu', hp: 3,
+    key: 'zhugeliang', name: '诸葛亮', faction: 'shu', hp: 4,
     skills: [{ name: '神算', description: '摸牌阶段，你改为观看牌堆顶 3 张牌，获得其中 2 张，另一张置于牌堆底；你使用的锦囊不能被【识破】抵消。' }],
   },
   {
@@ -55,7 +55,7 @@ const defs: GeneralDef[] = [
     ],
   },
   {
-    key: 'zhouyu', name: '周瑜', faction: 'wu', hp: 3,
+    key: 'zhouyu', name: '周瑜', faction: 'wu', hp: 4,
     skills: [{ name: '火计', description: '出牌阶段限一次，你可以弃置两张同花色手牌，对一名其他角色造成 1 点伤害。' }],
   },
   {

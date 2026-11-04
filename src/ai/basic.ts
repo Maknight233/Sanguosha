@@ -336,8 +336,8 @@ class Brain {
       case 'kuanren': {
         const t = this.weakest(s.targets.filter(this.isFriend));
         if (t === undefined) return null;
-        const cards = this.cheapest(this.hand.filter((c) => c.key !== 'yao'), 2);
-        if (cards.length < 2) return null;
+        const cards = this.cheapest(this.hand.filter((c) => c.key !== 'yao'), 1);
+        if (cards.length < 1) return null;
         return { type: 'skill', skill: s.skill, cards: cards.map((c) => c.id), targets: [t] };
       }
       case 'huoji': {

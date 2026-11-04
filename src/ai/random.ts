@@ -62,7 +62,7 @@ export class RandomController implements Controller {
     const opt = this.rng.pick(skills);
     const target = this.rng.pick(opt.targets);
     let cards: number[] = [];
-    if (opt.skill === 'kuanren') cards = this.rng.shuffle(hand.map((c) => c.id)).slice(0, 2);
+    if (opt.skill === 'kuanren') cards = [this.rng.pick(hand).id];
     if (opt.skill === 'huoji') {
       const bySuit = new Map<string, Card[]>();
       for (const c of hand) bySuit.set(c.suit, [...(bySuit.get(c.suit) ?? []), c]);

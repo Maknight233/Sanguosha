@@ -538,9 +538,9 @@ export class Game {
     const p = this.players[seat];
     const res: SkillOption[] = [];
     const others = this.players.filter((t) => t.alive && t.seat !== seat).map((t) => t.seat);
-    if (this.is(seat, 'liubei') && !this.skillUsed.has('kuanren') && p.hand.length >= 2) {
-      const targets = this.players.filter((t) => t.alive && t.hp < t.maxHp).map((t) => t.seat);
-      if (targets.length > 0) res.push({ skill: 'kuanren', cardCount: 2, targets });
+    if (this.is(seat, 'liubei') && !this.skillUsed.has('kuanren') && p.hand.length >= 1) {
+      const targets = this.players.filter((t) => t.alive && t.seat !== seat && t.hp < t.maxHp).map((t) => t.seat);
+      if (targets.length > 0) res.push({ skill: 'kuanren', cardCount: 1, targets });
     }
     if (this.is(seat, 'zhouyu') && !this.skillUsed.has('huoji') && hasSameSuitPair(p.hand) && others.length > 0) {
       res.push({ skill: 'huoji', cardCount: 2, targets: others });
@@ -696,7 +696,7 @@ export class Game {
         this.skillUsed.add('kuanren');
         for (const id of ids) this.takeFromHand(p, id);
         this.discard(cards as Card[]);
-        this.addLog(`${this.who(seat)} 发动【宽仁】，弃置两张手牌，令 ${this.who(target)} 回复体力。`);
+        this.addLog(`${this.who(seat)} 发动【宽仁】，弃置 ${cardText(cards[0]!)}，令 ${this.who(target)} 回复体力。`);
         this.markHelp(seat, target, HELP_WEIGHT.heal);
         this.recover(target, 1);
         break;
@@ -974,13 +974,6 @@ export class Game {
     p.hp = Math.min(p.maxHp, p.hp + amount);
     if (p.hp <= before) return;
     this.addLog(`${this.who(seat)} 回复 ${p.hp - before} 点体力，体力 ${p.hp}/${p.maxHp}。`);
-    // 宽仁（被动）
-    for (const s of this.aliveFrom(0)) {
-      if (s !== seat && this.is(s, 'liubei')) {
-        this.addLog(`${this.who(s)} 的【宽仁】触发。`);
-        this.drawCards(this.players[s], 1);
-      }
-    }
   }
 
   async dying(seat: number, killer: number | null): Promise<void> {

@@ -80,7 +80,7 @@ describe('魏', () => {
 });
 
 describe('蜀', () => {
-  it('刘备【宽仁】：弃两张手牌令一名角色回复，并因他人回复摸牌', async () => {
+  it('刘备【宽仁】：弃一张手牌令一名角色回复，出牌阶段限一次', async () => {
     const { game, ctrls } = await setup(gens({ 3: 'liubei' }));
     const a = give(game, 3, 'zhan');
     const b = give(game, 3, 'bi');
@@ -89,13 +89,13 @@ describe('蜀', () => {
     ctrls[3].handler = (_v, req) =>
       req.type === 'play'
         ? n++ === 0
-          ? { type: 'skill', skill: 'kuanren', cards: [a.id, b.id], targets: [1] }
+          ? { type: 'skill', skill: 'kuanren', cards: [a.id], targets: [1] }
           : { type: 'end' }
         : undefined;
     await game.playPhase(game.players[3]);
     expect(game.players[1].hp).toBe(2);
-    expect(game.discardPile).toEqual(expect.arrayContaining([a, b]));
-    expect(game.players[3].hand).toHaveLength(1); // 被动摸牌
+    expect(game.discardPile).toContain(a);
+    expect(game.players[3].hand).toEqual([b]); // 没有被动摸牌
     expect(game.legalSkills(3)).toHaveLength(0); // 限一次
   });
 
@@ -207,7 +207,7 @@ describe('群', () => {
     game.drawPile.push(horse);
     const armor = equip(game, 1, 'yulinjia');
     await game.resolveZhan(0, 1); // 鱼鳞甲无基础牌可弃，伤害生效
-    expect(game.players[1].hp).toBe(2);
+    expect(game.players[1].hp).toBe(game.players[1].maxHp - 1);
     expect(game.players[1].equips.armor).toBeUndefined();
     expect(game.discardPile).toContain(armor);
   });
