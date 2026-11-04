@@ -125,28 +125,64 @@ describe('基础 AI：身份排除', () => {
     expect(a.type === 'use' && [2, 3].includes(a.target!)).toBe(true);
   });
 
-  it('内奸：第一个阵亡的是反贼 → 帮反贼，攻击主公和疑似忠臣', async () => {
+  it('内奸平衡：反贼只剩 1 人且忠臣在场 → 攻击疑似忠臣，不打主公和反贼', async () => {
     const { game } = await makeGame(); // 主公体力 5
     const z = give(game, 4, 'zhan');
     equip(game, 4, 'huanshoudao');
     game.players[2].alive = false;
     game.deathOrder.push(2);
-    expect(await playDecision(game, 4)).toEqual({ type: 'use', cardId: z.id, target: 0 });
-    // 1 号打过攻击主公的 3 号 → 视为忠臣；1 号体力更低，优先攻击
+    // 看不出谁忠谁反：按兵不动
+    expect(await playDecision(game, 4)).toEqual({ type: 'end' });
+    // 3 号打过主公 → 1 号更像忠臣（即使 1 号体力更高也打 1 号）
     game.markHostile(3, 0);
-    game.markHostile(1, 3);
+    game.players[3].hp = 1;
     expect(await playDecision(game, 4)).toEqual({ type: 'use', cardId: z.id, target: 1 });
   });
 
-  it('内奸帮反贼期间，主公体力 ≤4 时转回帮主公', async () => {
+  it('内奸平衡：救濒死的最后一个反贼', async () => {
+    const { game } = await makeGame();
+    const y = give(game, 4, 'yao');
+    game.players[2].alive = false;
+    game.deathOrder.push(2);
+    game.markHostile(3, 0);
+    const req: Request = { type: 'respond', accept: ['yao'], reason: { kind: 'save', dying: 3 } };
+    expect(await ai.decide(game.view(4), req)).toBe(y.id);
+    // 忠臣濒死则不救
+    expect(await ai.decide(game.view(4), { ...req, reason: { kind: 'save', dying: 1 } })).toBeNull();
+  });
+
+  it('内奸平衡期间，主公只剩 1 点体力时转回帮主公', async () => {
     const { game } = await makeGame();
     const z = give(game, 4, 'zhan');
     equip(game, 4, 'huanshoudao');
     game.players[2].alive = false;
     game.deathOrder.push(2);
     game.markHostile(3, 0);
-    game.players[0].hp = 4;
+    game.players[0].hp = 1;
     expect(await playDecision(game, 4)).toEqual({ type: 'use', cardId: z.id, target: 3 });
+  });
+
+  it('内奸抢人头：第一个角色阵亡前补刀体力 1 的疑似反贼', async () => {
+    const { game } = await makeGame();
+    const z = give(game, 4, 'zhan');
+    equip(game, 4, 'huanshoudao');
+    game.markHostile(2, 0);
+    game.markHostile(2, 0); // 2 号反复打主公 → 偏反
+    expect(await playDecision(game, 4)).toEqual({ type: 'end' }); // 体力满时不出手
+    game.players[2].hp = 1;
+    expect(await playDecision(game, 4)).toEqual({ type: 'use', cardId: z.id, target: 2 });
+  });
+
+  it('内奸平衡：不抢最后一个反贼的人头', async () => {
+    const { game } = await makeGame();
+    give(game, 4, 'zhan');
+    equip(game, 4, 'huanshoudao');
+    game.players[2].alive = false;
+    game.deathOrder.push(2);
+    game.markHostile(3, 0);
+    game.players[3].hp = 1;
+    const a = await playDecision(game, 4);
+    expect(a.type === 'use' && a.target === 3).toBe(false);
   });
 
   it('内奸帮反贼期间，忠臣也阵亡后转回帮主公', async () => {

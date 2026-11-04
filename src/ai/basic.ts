@@ -33,6 +33,20 @@ const RENEGADE_PREFERENCE = ['guanyu', 'liubei', 'simayi', 'zhaoyun', 'huatuo'];
 /** 内奸帮反贼期间，主公体力降到此值及以下时转回帮主公 */
 export const LORD_DANGER_HP = 4;
 
+/** 内奸策略参数（模拟脚本可以修改来对比效果） */
+export const RENEGADE_TUNING = {
+  /** 反贼只剩 1 人且忠臣还活着时进入「平衡」：打忠臣、不打反贼，避免被主公方 2 打 1 */
+  balance: true,
+  /** 平衡模式下救濒死的最后一个反贼 */
+  saveLastRebel: true,
+  /** 抢人头：优先补刀体力 ≤1 的反贼，拿 3 张奖励牌 */
+  stealKills: true,
+  /** 平衡模式下也抢最后一个反贼的人头（会导致 1 打 2） */
+  stealLastRebel: false,
+  /** 平衡模式下主公体力 ≤ 此值时转回帮主公（0 = 不转；模拟中 1 效果最好） */
+  balanceLordDangerHp: 1,
+};
+
 /** 身份倾向分超过此值才认定敌友（+1 确定忠，−1 确定反） */
 export const LEAN_THRESHOLD = 0.4;
 /** 连锁推理的迭代轮数 */
@@ -198,6 +212,11 @@ class Brain {
           if (attacksMe) return this.lord.hp > 1 ? 'enemy' : 'neutral';
           return 'friend';
         }
+        if (mode === 'balance') {
+          if (this.likelyRebel(seat)) return 'neutral';
+          if (this.likelyLoyal(seat)) return 'enemy';
+          return attacksMe ? 'enemy' : 'neutral';
+        }
         if (attacksMe) return 'enemy';
         if (mode === 'lord') return this.looksRebel(seat) || this.view.players[seat].role === 'rebel' ? 'enemy' : 'neutral';
         // 帮反贼时，攻击疑似忠臣
@@ -213,15 +232,67 @@ class Brain {
    * 内奸策略：第一个角色阵亡前按兵不动；
    * 第一个阵亡的是忠臣 → 帮主公；是反贼 → 帮反贼，但反贼人数追平主公方后转回帮主公。
    */
-  private renegadeMode(): 'wait' | 'lord' | 'rebels' {
+  private renegadeMode(): 'wait' | 'lord' | 'rebels' | 'balance' {
     const first = this.view.deathOrder[0];
     if (first === undefined) return 'wait';
+    const { rebels, loyalistAlive } = this.aliveCounts();
+    // 平衡：最后一个反贼一死，内奸就要面对主公 + 忠臣，所以转打忠臣、保住反贼
+    if (RENEGADE_TUNING.balance && rebels === 1 && loyalistAlive && this.lord.hp > RENEGADE_TUNING.balanceLordDangerHp)
+      return 'balance';
     if (this.view.players[first].role !== 'rebel') return 'lord';
     // 动态切换：反贼人数不再少于主公方时（如忠臣也阵亡了），转回帮主公
-    const dead = (role: string) => this.view.players.filter((p) => !p.alive && p.role === role).length;
-    const rebels = 2 - dead('rebel');
-    const lordSide = 1 + (1 - dead('loyalist'));
+    const lordSide = 1 + (loyalistAlive ? 1 : 0);
     return rebels >= lordSide || this.lord.hp <= LORD_DANGER_HP ? 'lord' : 'rebels';
+  }
+
+  /** 存活的反贼人数、忠臣是否存活（由阵亡者身份推出） */
+  private aliveCounts(): { rebels: number; loyalistAlive: boolean } {
+    const dead = (role: string) => this.view.players.filter((p) => !p.alive && p.role === role).length;
+    return { rebels: 2 - dead('rebel'), loyalistAlive: dead('loyalist') === 0 };
+  }
+
+  /** 内奸视角：某人是否（很可能）是反贼 */
+  private likelyRebel(seat: number): boolean {
+    const p = this.view.players[seat];
+    if (!p.alive || seat === this.me.seat || seat === this.lord.seat) return false;
+    if (p.role !== null) return p.role === 'rebel';
+    const pool = this.unknownRoles();
+    if (pool.size === 1) return pool.has('rebel');
+    const pair = this.loyalRebelPair();
+    if (pair) return pair.rebel === seat;
+    return this.looksRebel(seat);
+  }
+
+  private likelyLoyal(seat: number): boolean {
+    const p = this.view.players[seat];
+    if (!p.alive || seat === this.me.seat || seat === this.lord.seat) return false;
+    if (p.role !== null) return p.role === 'loyalist';
+    const pair = this.loyalRebelPair();
+    if (pair) return pair.loyalist === seat;
+    return this.looksLoyal(seat);
+  }
+
+  /**
+   * 内奸视角：只剩两个未知者且必定一忠一反时，比较两人谁更像忠臣
+   * （倾向分高者为忠；分数相同时，打主公更多的是反贼）。看不出差别时返回 null。
+   */
+  private loyalRebelPair(): { loyalist: number; rebel: number } | null {
+    const unknown = this.aliveOthers().filter((x) => x.role === null && x.seat !== this.lord.seat);
+    const pool = this.unknownRoles();
+    if (unknown.length !== 2 || pool.size !== 2 || !pool.has('loyalist') || !pool.has('rebel')) return null;
+    const lord = this.lord.seat;
+    const score = (s: number) => this.lean(s) - (this.view.hostility[s]?.[lord] ?? 0) + (this.view.help[s]?.[lord] ?? 0);
+    const [a, b] = unknown.map((x) => x.seat);
+    const d = score(a) - score(b);
+    if (Math.abs(d) < 1e-6) return null;
+    return d > 0 ? { loyalist: a, rebel: b } : { loyalist: b, rebel: a };
+  }
+
+  /** 抢人头是否安全：杀掉这个反贼后不会落入主公 + 忠臣 2 打 1 */
+  private canStealKill(): boolean {
+    if (!RENEGADE_TUNING.stealKills) return false;
+    const { rebels, loyalistAlive } = this.aliveCounts();
+    return RENEGADE_TUNING.stealLastRebel || !(rebels === 1 && loyalistAlive);
   }
 
   private isEnemy = (seat: number) => this.relation(seat) === 'enemy';
@@ -290,6 +361,16 @@ class Brain {
     // 2. 回复
     const yao = byKey('yao')[0];
     if (yao && (this.me.hp <= 1 || this.hand.length > this.me.hp)) return use(yao);
+
+    // 内奸抢人头：补刀体力 ≤1 的反贼，拿 3 张奖励牌
+    if (this.me.role === 'renegade' && this.canStealKill()) {
+      const prey = (t: number) => this.view.players[t].hp <= 1 && this.likelyRebel(t);
+      const z = byKey('zhan').find((o) => o.targets.some(prey));
+      if (z) return use(z, z.targets.find(prey));
+      const hasZhan = this.hand.some((c) => c.key === 'zhan');
+      const bw = hasZhan ? byKey('biwu').find((o) => o.targets.some(prey)) : undefined;
+      if (bw) return use(bw, bw.targets.find(prey));
+    }
 
     // 3. 增益锦囊
     const tb = byKey('tiaobing')[0];
@@ -437,6 +518,9 @@ class Brain {
     if (dying === this.me.seat) return true;
     // 内奸需要主公撑到最后，但最后单挑时不救
     if (this.me.role === 'renegade' && dying === this.lord.seat) return this.aliveOthers().length > 1;
+    // 平衡模式：保住最后一个反贼
+    if (this.me.role === 'renegade' && RENEGADE_TUNING.saveLastRebel && this.renegadeMode() === 'balance' && this.likelyRebel(dying))
+      return true;
     return this.isFriend(dying);
   }
 
