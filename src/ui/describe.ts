@@ -25,7 +25,12 @@ export function describeRequest(view: GameView, req: Request): string {
     case 'chooseCard':
       return `${req.reason === 'jieying' ? '【劫营】弃置' : '【策反】获得'} ${name(view, req.target)} 的一张牌`;
     case 'choose':
-      return req.reason === 'xiuzheng' ? '【休整】：请选择' : '是否发动【先登】？';
+      return {
+        xiuzheng: '【休整】：请选择',
+        xiandeng: '是否发动【先登】？',
+        jinfan: '是否发动【锦帆】？',
+        yangsheng: '是否发动【养生】？选择要弃置的手牌',
+      }[req.reason];
     case 'selectCards':
       switch (req.reason) {
         case 'mousuan':

@@ -66,6 +66,30 @@ const defs: GeneralDef[] = [
     key: 'diaochan', name: '貂蝉', faction: 'qun', hp: 3,
     skills: [{ name: '惑心', description: '出牌阶段限一次，你选择两名其他角色（后者须在前者攻击范围内），前者须对后者使用一张【斩】，否则交给你一张手牌。' }],
   },
+  {
+    key: 'simayi', name: '司马懿', faction: 'wei', hp: 3,
+    skills: [{ name: '韬晦', description: '结束阶段，若本回合你没有对其他角色造成过伤害，你摸两张牌。' }],
+  },
+  {
+    key: 'guanyu', name: '关羽', faction: 'shu', hp: 4,
+    skills: [{ name: '过关', description: '存活角色不多于 3 人时，你摸牌阶段多摸 1 张牌，且每回合可以多使用 1 张【斩】。' }],
+  },
+  {
+    key: 'luxun', name: '陆逊', faction: 'wu', hp: 4,
+    skills: [{ name: '持重', description: '你的回合外，你每打出一张【避】，摸一张牌。' }],
+  },
+  {
+    key: 'ganning', name: '甘宁', faction: 'wu', hp: 4,
+    skills: [{ name: '锦帆', description: '你的【斩】造成伤害后，你可以随机获得目标的一张手牌。' }],
+  },
+  {
+    key: 'huatuo', name: '华佗', faction: 'qun', hp: 4,
+    skills: [{ name: '养生', description: '准备阶段，若你已受伤，你可以弃置一张手牌，回复 1 点体力。' }],
+  },
+  {
+    key: 'zhangjiao', name: '张角', faction: 'qun', hp: 4,
+    skills: [{ name: '聚众', description: '其他角色阵亡后，你增加 1 点体力上限并回复 1 点体力（每局最多因此增加 2 点上限）。' }],
+  },
 ];
 
 export const GENERALS: Record<string, GeneralDef> = Object.fromEntries(defs.map((g) => [g.key, g]));

@@ -39,6 +39,11 @@ export const DRAW_PER_TURN = 2;
 const LORD_CHOICES = 3;
 const OTHER_CHOICES = 2;
 
+/** 司马懿【韬晦】摸牌数 */
+export const TAOHUI_DRAW = 2;
+/** 张角【聚众】最多增加的体力上限 */
+export const JUZHONG_MAX = 2;
+
 /** 公开敌对行为的分量（AI 身份推理用） */
 export const HOSTILE_WEIGHT = {
   /** 【斩】、火计、比武、惑心发起者 */
@@ -108,6 +113,10 @@ export class Game {
   skillUsed = new Set<string>();
   /** 张辽【先登】本回合是否生效 */
   xiandeng = false;
+  /** 本回合当前角色是否对其他角色造成过伤害（司马懿【韬晦】） */
+  dealtDamageThisTurn = false;
+  /** 张角【聚众】已增加的体力上限 */
+  juzhongGained = new Map<number, number>();
   private listeners: Array<() => void> = [];
 
   constructor(private readonly opts: GameOptions) {
@@ -255,11 +264,14 @@ export class Game {
     this.turn++;
     this.zhanUsed = 0;
     this.zhanLimit = this.is(seat, 'zhaoyun') ? 2 : 1; // 七进
+    if (this.guoguan(seat)) this.zhanLimit += 1; // 过关
     this.skillUsed.clear();
     this.xiandeng = false;
+    this.dealtDamageThisTurn = false;
     this.addLog(`—— 第 ${this.turn} 回合：${this.who(seat)} ——`);
 
     this.phase = 'prepare';
+    if (this.is(seat, 'huatuo')) await this.yangsheng(p);
     this.phase = 'draw';
     await this.drawPhase(p);
     if (!p.alive) return;
@@ -278,6 +290,31 @@ export class Game {
       this.addLog(`${this.who(seat)} 发动【坐断】。`);
       this.drawCards(p, p.hp - p.hand.length);
     }
+    // 韬晦
+    if (this.is(seat, 'simayi') && !this.dealtDamageThisTurn) {
+      this.addLog(`${this.who(seat)} 发动【韬晦】。`);
+      this.drawCards(p, TAOHUI_DRAW);
+    }
+  }
+
+  /** 关羽【过关】：存活角色不多于 3 人时生效 */
+  guoguan(seat: number): boolean {
+    return this.is(seat, 'guanyu') && this.players.filter((p) => p.alive).length <= 3;
+  }
+
+  /** 华佗【养生】：准备阶段已受伤时，可弃一张手牌回复 1 点体力 */
+  async yangsheng(p: Player): Promise<void> {
+    if (p.hp >= p.maxHp || p.hand.length === 0) return;
+    const options = [
+      ...p.hand.map((c) => ({ id: String(c.id), label: `弃置 ${cardText(c)}` })),
+      { id: 'no', label: '不发动' },
+    ];
+    const ans = await this.ask(p.seat, { type: 'choose', reason: 'yangsheng', options });
+    const card = ans === 'no' ? null : this.takeFromHand(p, Number(ans));
+    if (!card) return;
+    this.discard([card]);
+    this.addLog(`${this.who(p.seat)} 发动【养生】，弃置了 ${cardText(card)}。`);
+    this.recover(p.seat, 1);
   }
 
   async drawPhase(p: Player): Promise<void> {
@@ -315,7 +352,9 @@ export class Game {
         return;
       }
     }
-    this.drawCards(p, DRAW_PER_TURN);
+    const extra = this.guoguan(seat) ? 1 : 0; // 过关
+    if (extra) this.addLog(`${this.who(seat)} 的【过关】生效。`);
+    this.drawCards(p, DRAW_PER_TURN + extra);
   }
 
   /** 校验 selectCards 回答，不合法时取前 count 张 */
@@ -726,6 +765,22 @@ export class Game {
         this.discard([pick]);
         this.addLog(`${this.who(user)} 发动【骁勇】，弃置了 ${this.who(target)} 的 ${cardText(pick)}。`);
       }
+      // 锦帆
+      if (dealt > 0 && this.is(user, 'ganning') && t.alive && t.hand.length > 0) {
+        const ans = await this.ask(user, {
+          type: 'choose',
+          reason: 'jinfan',
+          options: [
+            { id: 'yes', label: `发动【锦帆】：随机获得 ${this.who(target)} 的一张手牌` },
+            { id: 'no', label: '不发动' },
+          ],
+        });
+        if (ans === 'yes') {
+          const got = t.hand.splice(this.rng.int(t.hand.length), 1)[0];
+          this.players[user].hand.push(got);
+          this.addLog(`${this.who(user)} 发动【锦帆】，获得了 ${this.who(target)} 的一张手牌。`);
+        }
+      }
     }
     const u = this.players[user];
     if (u.alive && t.alive && this.weaponKey(user) === 'huanshoudao' && t.hand.length > u.hand.length) {
@@ -740,6 +795,11 @@ export class Game {
     if (dodge) {
       const how = dodge.length === 2 ? `将 ${dodge.map(cardText).join('、')} 当作【避】打出` : `打出 ${cardText(dodge[0])}`;
       this.addLog(`${this.who(target)} ${how}，抵消了【斩】。`);
+      // 持重
+      if (this.is(target, 'luxun') && target !== this.current) {
+        this.addLog(`${this.who(target)} 发动【持重】。`);
+        this.drawCards(this.players[target], 1);
+      }
       return true;
     }
     if (this.isLord(target, 'caocao')) {
@@ -874,6 +934,7 @@ export class Game {
     }
 
     t.hp -= amount;
+    if (source === this.current && source !== target) this.dealtDamageThisTurn = true;
     const from = source === null ? '' : `${this.who(source)} 对 `;
     this.addLog(`${from}${this.who(target)} 造成 ${amount} 点伤害，体力 ${t.hp}/${t.maxHp}。`);
     if (t.hp <= 0) await this.dying(target, source);
@@ -962,6 +1023,20 @@ export class Game {
           this.recover(s, 1);
         }
       }
+    }
+
+    // 过关：关羽自己的回合中人数降到 3 人时，本回合立即多 1 次【斩】
+    if (this.players.filter((p) => p.alive).length === 3 && this.guoguan(this.current)) this.zhanLimit += 1;
+
+    // 聚众
+    for (const s of this.aliveFrom(0)) {
+      const gained = this.juzhongGained.get(s) ?? 0;
+      if (!this.is(s, 'zhangjiao') || gained >= JUZHONG_MAX) continue;
+      this.juzhongGained.set(s, gained + 1);
+      const z = this.players[s];
+      z.maxHp += 1;
+      this.addLog(`${this.who(s)} 发动【聚众】，体力上限 +1。`);
+      this.recover(s, 1);
     }
 
     if (killer === null || killer === seat) return;

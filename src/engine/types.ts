@@ -97,6 +97,8 @@ export type RespondReason =
   /** 惑心：须对 victim 使用【斩】，否则交给 from 一张手牌 */
   | { kind: 'huoxin'; victim: number; from: number };
 
+export type ChooseReason = 'xiuzheng' | 'xiandeng' | 'jinfan' | 'yangsheng';
+
 export interface ChoiceOption {
   id: string;
   label: string;
@@ -110,7 +112,8 @@ export type Request =
   | { type: 'discard'; count: number }
   /** 从目标区域选一张牌：手牌随机抽取，装备可指定 */
   | { type: 'chooseCard'; target: number; handCount: number; equips: Card[]; reason: 'jieying' | 'cefan' }
-  | { type: 'choose'; options: ChoiceOption[]; reason: 'xiuzheng' | 'xiandeng' }
+  /** 养生的选项 id 为要弃置的手牌 id（字符串），'no' 表示不发动 */
+  | { type: 'choose'; options: ChoiceOption[]; reason: ChooseReason }
   /** 从给定牌中选出 count 张 */
   | { type: 'selectCards'; cards: Card[]; count: number; reason: 'mousuan' | 'shensuan' | 'xiaoyong' | 'huoxin' }
   /** 将牌排序放回牌堆顶，返回的第一张在最上面 */

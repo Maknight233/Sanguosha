@@ -3,6 +3,7 @@ import type {
   Card,
   CardPick,
   ChoiceOption,
+  ChooseReason,
   Controller,
   GameView,
   PlayAction,
@@ -23,8 +24,11 @@ type Relation = 'friend' | 'enemy' | 'neutral';
 
 /** 选将偏好：越靠前越优先 */
 const GENERAL_PREFERENCE = [
-  'zhugeliang', 'guojia', 'caocao', 'liubei', 'zhaoyun', 'sunquan', 'lvbu', 'zhouyu', 'diaochan', 'zhangliao',
+  'zhugeliang', 'guojia', 'caocao', 'liubei', 'zhaoyun', 'sunquan', 'ganning', 'lvbu', 'zhouyu', 'huatuo',
+  'luxun', 'zhangjiao', 'guanyu', 'simayi', 'diaochan', 'zhangliao',
 ];
+/** 内奸要活到最后：按模拟中内奸胜率排序（关羽、刘备、司马懿明显更高） */
+const RENEGADE_PREFERENCE = ['guanyu', 'liubei', 'simayi', 'zhaoyun', 'huatuo'];
 
 /** 内奸帮反贼期间，主公体力降到此值及以下时转回帮主公 */
 export const LORD_DANGER_HP = 4;
@@ -60,7 +64,7 @@ class Brain {
   decide(req: Request): Response<Request> {
     switch (req.type) {
       case 'chooseGeneral':
-        return [...req.options].sort((a, b) => GENERAL_PREFERENCE.indexOf(a) - GENERAL_PREFERENCE.indexOf(b))[0];
+        return this.chooseGeneral(req.options);
       case 'play':
         return this.play(req.options, req.skills);
       case 'respond':
@@ -453,8 +457,22 @@ class Brain {
     return [...cards].sort((a, b) => order.indexOf(cardDef(a.key).slot!) - order.indexOf(cardDef(b.key).slot!))[0];
   }
 
-  private choose(reason: 'xiuzheng' | 'xiandeng', options: ChoiceOption[]): string {
+  private chooseGeneral(options: string[]): string {
+    const rank = (g: string) => {
+      const r = this.me.role === 'renegade' ? RENEGADE_PREFERENCE.indexOf(g) : -1;
+      return r >= 0 ? r - 100 : GENERAL_PREFERENCE.indexOf(g);
+    };
+    return [...options].sort((a, b) => rank(a) - rank(b))[0];
+  }
+
+  private choose(reason: ChooseReason, options: ChoiceOption[]): string {
     if (reason === 'xiuzheng') return this.me.hp < this.me.maxHp ? 'recover' : 'draw';
+    if (reason === 'jinfan') return 'yes';
+    if (reason === 'yangsheng') {
+      // 弃最不值钱的手牌回血
+      const c = this.cheapest(this.hand, 1)[0];
+      return c && options.some((o) => o.id === String(c.id)) ? String(c.id) : 'no';
+    }
     // 先登：有【斩】、没有神臂弓、且有够不着的敌人时发动
     const hasZhan = this.hand.some((c) => c.key === 'zhan');
     const shenbi = this.me.equips.weapon?.key === 'shenbigong';
