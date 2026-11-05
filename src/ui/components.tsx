@@ -3,6 +3,7 @@ import { cardDef, isRed, SUIT_SYMBOL } from '../data/cards';
 import { FACTION_NAME, generalDef } from '../data/generals';
 import { ROLE_NAME } from '../engine/game';
 import type { Card, EquipSlot, PlayerPublic } from '../engine/types';
+import { CardTip, SkillTip, tipProps } from './tooltip';
 
 const RANK_TEXT = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const KIND_NAME = { basic: '基础', trick: '锦囊', equip: '装备' } as const;
@@ -22,7 +23,7 @@ export function CardView({ card, selected, disabled, small, onClick }: CardViewP
     .filter(Boolean)
     .join(' ');
   return (
-    <div className={cls} title={`【${def.name}】${def.description}`} onClick={disabled ? undefined : onClick}>
+    <div className={cls} data-card={def.name} {...tipProps(() => <CardTip card={card} />)} onClick={disabled ? undefined : onClick}>
       <div className={`card-corner ${isRed(card) ? 'red' : 'black'}`}>
         {SUIT_SYMBOL[card.suit]}
         {RANK_TEXT[card.rank]}
@@ -78,7 +79,7 @@ export function Equips({ equips }: { equips: PlayerPublic['equips'] }) {
         const c = equips[s]!;
         const def = cardDef(c.key);
         return (
-          <span key={s} className="equip-tag" title={def.description}>
+          <span key={s} className="equip-tag" {...tipProps(() => <CardTip card={c} />)}>
             {SLOT_NAME[s]}：{def.name}
           </span>
         );
@@ -95,9 +96,11 @@ interface SeatProps {
   distance: number | null;
   inRange: boolean;
   onClick: () => void;
+  /** 打开武将详情 */
+  onInfo?: () => void;
 }
 
-export function SeatView({ p, isCurrent, selectable, selected, distance, inRange, onClick }: SeatProps) {
+export function SeatView({ p, isCurrent, selectable, selected, distance, inRange, onClick, onInfo }: SeatProps) {
   const g = p.general ? generalDef(p.general) : null;
   const dying = p.alive && p.hp <= 0;
   const cls = ['seat', g && `faction-${g.faction}`, isCurrent && 'current', !p.alive && 'dead', dying && 'dying', selectable && 'selectable', selected && 'selected']
@@ -107,7 +110,10 @@ export function SeatView({ p, isCurrent, selectable, selected, distance, inRange
     <div className={cls} data-seat={p.seat} onClick={selectable ? onClick : undefined}>
       <div className="seat-top">
         <span className="seat-name">{p.name}</span>
-        <span className={`role-badge role-${p.role ?? 'unknown'}`}>{p.role ? ROLE_NAME[p.role] : '？'}</span>
+        <span>
+          <span className={`role-badge role-${p.role ?? 'unknown'}`}>{p.role ? ROLE_NAME[p.role] : '？'}</span>
+          {onInfo && <InfoButton onClick={onInfo} />}
+        </span>
       </div>
       <div className="general-portrait small">
         {g?.image ? <img src={g.image} alt={g.name} /> : <span>{g?.name ?? '选将中'}</span>}
@@ -129,8 +135,12 @@ export function SeatView({ p, isCurrent, selectable, selected, distance, inRange
       </div>
       <Equips equips={p.equips} />
       {g && (
-        <div className="seat-skills" title={g.skills.map((s) => `【${s.name}】${s.description}`).join('\n')}>
-          {g.skills.map((s) => `【${s.name}】`).join('')}
+        <div className="seat-skills">
+          {g.skills.map((s) => (
+            <span key={s.name} className="skill-name" {...tipProps(() => <SkillTip {...s} />)}>
+              【{s.name}】
+            </span>
+          ))}
         </div>
       )}
       {!p.alive && <div className="dead-mark">阵亡</div>}
@@ -138,10 +148,31 @@ export function SeatView({ p, isCurrent, selectable, selected, distance, inRange
   );
 }
 
-export function Modal({ title, children }: { title: string; children: ReactNode }) {
+/** 「ⓘ」详情按钮；不会触发外层座位的点击（选目标） */
+export function InfoButton({ onClick }: { onClick: () => void }) {
   return (
-    <div className="modal-backdrop">
-      <div className="modal">
+    <button
+      className="info-btn"
+      aria-label="武将详情"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      ⓘ
+    </button>
+  );
+}
+
+export function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose?: () => void }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        {onClose && (
+          <button className="modal-close" aria-label="关闭" onClick={onClose}>
+            ×
+          </button>
+        )}
         <h3>{title}</h3>
         {children}
       </div>

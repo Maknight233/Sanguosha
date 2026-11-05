@@ -4,8 +4,10 @@ import { isRed } from '../data/cards';
 import { generalDef } from '../data/generals';
 import { Game, ROLE_NAME, WINNER_NAME } from '../engine/game';
 import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOption, Winner } from '../engine/types';
-import { CardView, Equips, GeneralCard, Hp, Modal, SeatView } from './components';
-import { HumanController, PacedController } from './controllers';
+import { CardView, Equips, GeneralCard, Hp, InfoButton, Modal, SeatView } from './components';
+import { HumanController, PacedController, PauseGate } from './controllers';
+import { filterLog, GeneralPanel, LOG_FILTERS, type LogFilter } from './inspect';
+import { SkillTip, tipProps, TooltipHost } from './tooltip';
 import { describeRequest, skillName } from './describe';
 import { dyingSeats, EffectsLayer, PlayZone } from './effects';
 
@@ -27,13 +29,17 @@ interface Session {
   game: Game;
   human: HumanController;
   ais: PacedController[];
+  gate: PauseGate;
+  /** 查看武将详情时是否暂停：单机对 AI 时开启；以后联网与真人对局时应关闭 */
+  pauseOnInspect: boolean;
 }
 
 function createSession(delay: () => number, seed?: number): Session {
   const human = new HumanController();
-  const ais = [1, 2, 3, 4].map(() => new PacedController(new BasicAI(), delay));
+  const gate = new PauseGate();
+  const ais = [1, 2, 3, 4].map(() => new PacedController(new BasicAI(), delay, gate));
   const game = new Game({ controllers: [human, ...ais], names: NAMES, seed: seed ?? Math.floor(Math.random() * 1e9) });
-  return { game, human, ais };
+  return { game, human, ais, gate, pauseOnInspect: true };
 }
 
 interface GameScreenProps {
@@ -52,11 +58,13 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
   speedRef.current = speed;
   const [, rerender] = useReducer((x: number) => x + 1, 0);
   const tableRef = useRef<HTMLDivElement>(null);
+  const [inspect, setInspect] = useState<number | null>(null);
 
   useEffect(() => {
     const s = createSession(() => speedRef.current, seed === undefined ? undefined : seed + round);
     setSession(s);
     setWinner(null);
+    setInspect(null);
     const unsubs = [s.game.subscribe(rerender), s.human.subscribe(rerender)];
     s.game.start().then(setWinner, (e) => console.error(e));
     return () => {
@@ -67,7 +75,15 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
   }, [round]);
 
   if (!session) return null;
-  const { game, human } = session;
+  const { game, human, gate, pauseOnInspect } = session;
+  const openInspect = (seat: number) => {
+    if (pauseOnInspect) gate.pause();
+    setInspect(seat);
+  };
+  const closeInspect = () => {
+    gate.resume();
+    setInspect(null);
+  };
   const view = game.view(HUMAN);
   const pending = human.pending;
   const dying = dyingSeats(game);
@@ -83,7 +99,7 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
         {view.players.map((p) =>
           p.seat === HUMAN ? null : (
             <div key={p.seat} className={`area-${SEAT_AREA[p.seat]}`}>
-              <SeatSlot game={game} view={view} seat={p.seat} pending={pending?.req ?? null} />
+              <SeatSlot game={game} view={view} seat={p.seat} pending={pending?.req ?? null} onInfo={() => openInspect(p.seat)} />
             </div>
           ),
         )}
@@ -112,7 +128,12 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
           </div>
         </div>
         <div className="area-me">
-          <PlayerArea key={pending ? JSON.stringify(pending.req) + game.log.length : "idle"} view={view} human={human} />
+          <PlayerArea
+            key={pending ? JSON.stringify(pending.req) + game.log.length : 'idle'}
+            view={view}
+            human={human}
+            onInfo={() => openInspect(HUMAN)}
+          />
         </div>
         <EffectsLayer key={round} game={game} container={tableRef} />
       </div>
@@ -123,6 +144,10 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
         </div>
         <LogPanel game={game} />
       </aside>
+      {inspect !== null && (
+        <GeneralPanel p={view.players[inspect]} isMe={inspect === HUMAN} paused={pauseOnInspect && !winner} onClose={closeInspect} />
+      )}
+      <TooltipHost />
       {winner && <GameOver game={game} winner={winner} onAgain={() => setRound((r) => r + 1)} onExit={onExit} />}
     </div>
   );
@@ -181,7 +206,19 @@ function clickSeat(req: Request | null, sel: Selection, seat: number) {
   setSelection({ ...sel, targets: [t0, seat] });
 }
 
-function SeatSlot({ game, view, seat, pending }: { game: Game; view: GameView; seat: number; pending: Request | null }) {
+function SeatSlot({
+  game,
+  view,
+  seat,
+  pending,
+  onInfo,
+}: {
+  game: Game;
+  view: GameView;
+  seat: number;
+  pending: Request | null;
+  onInfo: () => void;
+}) {
   const sel = useSelection();
   const selectable = selectableSeats(pending, sel).includes(seat);
   const alive = view.players[HUMAN].alive && view.players[seat].alive;
@@ -194,13 +231,14 @@ function SeatSlot({ game, view, seat, pending }: { game: Game; view: GameView; s
       distance={alive ? game.distance(HUMAN, seat) : null}
       inRange={alive && game.inAttackRange(HUMAN, seat)}
       onClick={() => clickSeat(pending, sel, seat)}
+      onInfo={onInfo}
     />
   );
 }
 
 // ───────────── 玩家区域：自己的信息、手牌、操作按钮 ─────────────
 
-function PlayerArea({ view, human }: { view: GameView; human: HumanController }) {
+function PlayerArea({ view, human, onInfo }: { view: GameView; human: HumanController; onInfo: () => void }) {
   const me = view.players[HUMAN];
   const hand = me.hand ?? [];
   const req = human.pending?.req ?? null;
@@ -291,13 +329,14 @@ function PlayerArea({ view, human }: { view: GameView; human: HumanController })
         <div>
           <b>{g?.name ?? '选将中'}</b>
           {me.role && <span className={`role-badge role-${me.role}`}>{ROLE_NAME[me.role]}</span>}
+          <InfoButton onClick={onInfo} />
         </div>
         {g && <Hp hp={Math.max(me.hp, 0)} maxHp={me.maxHp} />}
         <Equips equips={me.equips} />
         {g && (
           <div className="seat-skills">
             {g.skills.map((s) => (
-              <div key={s.name} title={s.description}>
+              <div key={s.name} {...tipProps(() => <SkillTip {...s} />)}>
                 【{s.name}】{s.description}
               </div>
             ))}
@@ -445,19 +484,30 @@ function RequestModal({ view, req, answer }: { view: GameView; req: Request; ans
 
 function LogPanel({ game }: { game: Game }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [filter, setFilter] = useState<LogFilter>('all');
   const n = game.log.length;
   useEffect(() => {
     if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
-  }, [n]);
-  const entries = useMemo(() => game.log.slice(-300), [n, game]);
+  }, [n, filter]);
+  const entries = useMemo(() => filterLog(game.log, filter, HUMAN, game.turn).slice(-300), [n, game, filter]);
   return (
-    <div className="log" ref={ref}>
-      {entries.map((e, i) => (
-        <div key={n - entries.length + i} className={e.text.startsWith('——') ? 'log-turn' : ''}>
-          {e.text}
-        </div>
-      ))}
-    </div>
+    <>
+      <div className="log-filters">
+        {LOG_FILTERS.map(([id, label]) => (
+          <button key={id} className={filter === id ? 'active' : ''} onClick={() => setFilter(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="log" ref={ref}>
+        {entries.map((e, i) => (
+          <div key={i} className={e.text.startsWith('——') ? 'log-turn' : ''}>
+            {e.text}
+          </div>
+        ))}
+        {entries.length === 0 && <div className="muted">（暂无记录）</div>}
+      </div>
+    </>
   );
 }
 

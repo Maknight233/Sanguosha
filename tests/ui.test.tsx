@@ -18,7 +18,7 @@ function usableHandCards(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('.player-area .me-main .hand .card:not(.disabled)')];
 }
 
-const isCard = (el: HTMLElement, name: string) => el.getAttribute('title')?.startsWith(`【${name}】`);
+const isCard = (el: HTMLElement, name: string) => el.dataset.card === name;
 
 interface Stats {
   zhanPlayed: number;

@@ -165,3 +165,29 @@ th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; v
 @keyframes fx-flash { 0% { opacity: 0; } 20% { opacity: 1; } 100% { opacity: 0; } }
 .fx-float { font-size: 34px; font-weight: bold; color: #fff; text-shadow: 0 0 4px #000, 0 2px 6px #000; animation: fx-float .8s ease-out forwards; }
 @keyframes fx-float { from { transform: translateY(10px); } to { transform: translateY(-26px); } }
+
+/* 悬浮提示 */
+.tooltip { position: fixed; z-index: 100; max-width: 280px; background: #2b2118; color: #f6efe0; border: 1px solid #a0522d; border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 1.55; pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.tip-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 14px; }
+.tip-sub { color: #c9b79c; font-size: 12px; margin-bottom: 3px; }
+.tooltip .red { color: #ff7a6e; font-weight: bold; }
+.tooltip .black { color: #fff; font-weight: bold; }
+.skill-name { cursor: help; }
+.skill-name:hover, .me-info .seat-skills div:hover { color: var(--accent); }
+.equip-tag { cursor: help; }
+
+/* 详情按钮与面板 */
+.info-btn { padding: 0 5px; margin-left: 4px; font-size: 13px; line-height: 18px; border-radius: 50%; border-color: var(--muted); color: var(--muted); }
+.info-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.modal { position: relative; }
+.modal-close { position: absolute; top: 8px; right: 10px; border: none; background: none; font-size: 22px; padding: 0 6px; color: var(--muted); }
+.inspect { width: 440px; max-width: 80vw; font-size: 14px; }
+.inspect h4 { margin: 12px 0 4px; border-bottom: 1px solid var(--border); }
+.inspect-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.inspect-equip { display: flex; gap: 10px; align-items: center; margin: 6px 0; }
+.paused-tag { background: #f2c94c; color: #2b2118; padding: 3px 10px; border-radius: 6px; margin-bottom: 8px; font-weight: bold; text-align: center; }
+.red { color: #d0312d; }
+
+/* 日志筛选 */
+.log-filters { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.log-filters button { padding: 2px 8px; font-size: 12px; }
