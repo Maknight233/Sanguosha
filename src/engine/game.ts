@@ -7,6 +7,7 @@ import type {
   Controller,
   GameView,
   LogEntry,
+  LogEvent,
   Phase,
   PlayAction,
   PlayOption,
@@ -160,8 +161,20 @@ export class Game {
     for (const l of this.listeners) l();
   }
 
-  addLog(text: string): void {
-    this.log.push({ turn: this.turn, text });
+  /** 下一条出牌 / 弃牌事件是否为一次新结算的开始 */
+  private resolutionStart = false;
+
+  /** 标记新结算开始（出牌阶段的一次使用、弃牌阶段弃牌等） */
+  private beginResolution(): void {
+    this.resolutionStart = true;
+  }
+
+  addLog(text: string, event?: LogEvent): void {
+    if (event && (event.type === 'use' || event.type === 'discard') && this.resolutionStart) {
+      this.resolutionStart = false;
+      event = { ...event, start: true };
+    }
+    this.log.push(event ? { turn: this.turn, text, event } : { turn: this.turn, text });
     this.emit();
   }
 
@@ -289,7 +302,7 @@ export class Game {
     this.xiandeng = false;
     this.shensuanDrawn = false;
     this.dealtDamageThisTurn = false;
-    this.addLog(`—— 第 ${this.turn} 回合：${this.who(seat)} ——`);
+    this.addLog(`—— 第 ${this.turn} 回合：${this.who(seat)} ——`, { type: 'turn', seat });
 
     this.phase = 'prepare';
     if (this.is(seat, 'huatuo')) await this.yangsheng(p);
@@ -326,6 +339,7 @@ export class Game {
   /** 华佗【养生】：准备阶段已受伤时，可弃一张手牌回复 1 点体力，然后摸一张牌（弃【药】时不摸） */
   async yangsheng(p: Player): Promise<void> {
     if (p.hp >= p.maxHp || p.hand.length === 0) return;
+    this.beginResolution();
     const options = [
       ...p.hand.map((c) => ({ id: String(c.id), label: `弃置 ${cardText(c)}` })),
       { id: 'no', label: '不发动' },
@@ -334,7 +348,7 @@ export class Game {
     const card = ans === 'no' ? null : this.takeFromHand(p, Number(ans));
     if (!card) return;
     this.discard([card]);
-    this.addLog(`${this.who(p.seat)} 发动【养生】，弃置了 ${cardText(card)}。`);
+    this.addLog(`${this.who(p.seat)} 发动【养生】，弃置了 ${cardText(card)}。`, { type: 'use', from: p.seat, to: [], cards: [card], skill: '养生' });
     this.recover(p.seat, 1);
     if (card.key !== 'yao') this.drawCards(p, 1); // 弃【药】时不摸牌
   }
@@ -583,7 +597,10 @@ export class Game {
       if (action.type === 'end') return;
       if (action.type === 'skill') {
         const opt = skills.find((o) => o.skill === action.skill);
-        if (opt) await this.useSkill(p, opt, action.cards, action.targets);
+        if (opt) {
+          this.beginResolution();
+          await this.useSkill(p, opt, action.cards, action.targets);
+        }
         continue;
       }
       const opt = options.find((o) => o.cardId === action.cardId);
@@ -595,6 +612,7 @@ export class Game {
         extra = action.extraTarget;
       }
       const card = this.takeFromHand(p, action.cardId)!;
+      this.beginResolution();
       await this.useCard(p, card, action.target, extra);
     }
   }
@@ -606,7 +624,7 @@ export class Game {
       const old = p.equips[slot];
       if (old) this.discard([old]);
       p.equips[slot] = card;
-      this.addLog(`${this.who(p.seat)} 装备了 ${cardText(card)}。`);
+      this.addLog(`${this.who(p.seat)} 装备了 ${cardText(card)}。`, { type: 'use', from: p.seat, to: [], cards: [card] });
       return;
     }
 
@@ -622,30 +640,30 @@ export class Game {
       case 'zhan': {
         this.zhanUsed++;
         const targets = extraTarget === undefined ? [target!] : [target!, extraTarget];
-        this.addLog(`${this.who(user)} 对 ${targets.map((t) => this.who(t)).join('、')} 使用了 ${cardText(card)}。`);
+        this.addLog(`${this.who(user)} 对 ${targets.map((t) => this.who(t)).join('、')} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: targets, cards: [card] });
         for (const t of targets) this.markHostile(user, t);
         for (const t of targets) await this.resolveZhan(user, t);
         break;
       }
       case 'yao':
-        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`);
+        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: [], cards: [card] });
         this.recover(user, 1);
         break;
       case 'tiaobing':
-        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`);
+        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: [], cards: [card] });
         if (!(await this.nullified(card, user, user))) this.drawCards(p, 2);
         break;
       case 'jieying':
       case 'cefan': {
         const t = target!;
         this.markHostile(user, t, HOSTILE_WEIGHT.steal);
-        this.addLog(`${this.who(user)} 对 ${this.who(t)} 使用了 ${cardText(card)}。`);
+        this.addLog(`${this.who(user)} 对 ${this.who(t)} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: [t], cards: [card] });
         if (await this.nullified(card, user, t)) break;
         const taken = await this.pickCardFrom(user, t, card.key);
         if (!taken) break;
         if (card.key === 'jieying') {
           this.discard([taken]);
-          this.addLog(`${this.who(user)} 弃置了 ${this.who(t)} 的 ${cardText(taken)}。`);
+          this.addLog(`${this.who(user)} 弃置了 ${this.who(t)} 的 ${cardText(taken)}。`, { type: 'discard', from: t, cards: [taken] });
         } else {
           p.hand.push(taken);
           this.addLog(`${this.who(user)} 获得了 ${this.who(t)} 的一张牌。`);
@@ -653,18 +671,18 @@ export class Game {
         break;
       }
       case 'xiwen':
-        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`);
+        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: [], cards: [card] });
         for (const t of this.aliveFrom(user).slice(1)) {
           if (!this.players[t].alive || (await this.nullified(card, user, t))) continue;
           const paid = await this.askForCard(t, BASIC_KEYS, { kind: 'xiwen', source: user });
-          if (paid) this.addLog(`${this.who(t)} 弃置了 ${cardText(paid[0])} 响应【檄文】。`);
+          if (paid) this.addLog(`${this.who(t)} 弃置了 ${cardText(paid[0])} 响应【檄文】。`, { type: 'use', from: t, to: [], cards: paid });
           else await this.damage(user, t, 1);
         }
         break;
       case 'biwu': {
         const t = target!;
         this.markHostile(user, t);
-        this.addLog(`${this.who(user)} 对 ${this.who(t)} 使用了 ${cardText(card)}。`);
+        this.addLog(`${this.who(user)} 对 ${this.who(t)} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: [t], cards: [card] });
         if (await this.nullified(card, user, t)) break;
         let [turn, other] = [t, user];
         for (;;) {
@@ -673,13 +691,13 @@ export class Game {
             await this.damage(other, turn, 1);
             break;
           }
-          this.addLog(`${this.who(turn)} 弃置了 ${cardText(z[0])}。`);
+          this.addLog(`${this.who(turn)} 弃置了 ${cardText(z[0])}。`, { type: 'use', from: turn, to: [other], cards: z });
           [turn, other] = [other, turn];
         }
         break;
       }
       case 'xiuzheng':
-        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`);
+        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: [], cards: [card] });
         for (const t of this.aliveFrom(user)) {
           if (await this.nullified(card, user, t)) continue;
           const tp = this.players[t];
@@ -717,7 +735,7 @@ export class Game {
         this.skillUsed.add('kuanren');
         for (const id of ids) this.takeFromHand(p, id);
         this.discard(cards as Card[]);
-        this.addLog(`${this.who(seat)} 发动【宽仁】，弃置 ${cardText(cards[0]!)}，令 ${this.who(target)} 回复体力。`);
+        this.addLog(`${this.who(seat)} 发动【宽仁】，弃置 ${cardText(cards[0]!)}，令 ${this.who(target)} 回复体力。`, { type: 'use', from: seat, to: [target], cards: cards as Card[], skill: '宽仁' });
         this.markHelp(seat, target, HELP_WEIGHT.heal);
         this.recover(target, 1);
         break;
@@ -729,7 +747,7 @@ export class Game {
         this.markHostile(seat, target);
         for (const id of ids) this.takeFromHand(p, id);
         this.discard([a, b]);
-        this.addLog(`${this.who(seat)} 发动【火计】，弃置 ${cardText(a)}、${cardText(b)}，对 ${this.who(target)} 造成伤害。`);
+        this.addLog(`${this.who(seat)} 发动【火计】，弃置 ${cardText(a)}、${cardText(b)}，对 ${this.who(target)} 造成伤害。`, { type: 'use', from: seat, to: [target], cards: [a, b], skill: '火计' });
         await this.damage(seat, target, 1);
         // 弃置的是红色牌（同花色，两张同色）时摸一张牌
         if (isRed(a) && p.alive) this.drawCards(p, 1);
@@ -740,10 +758,10 @@ export class Game {
         if (!opt.secondTargets?.[target]?.includes(victim)) return;
         this.skillUsed.add('huoxin');
         this.markHostile(seat, victim);
-        this.addLog(`${this.who(seat)} 发动【惑心】，令 ${this.who(target)} 对 ${this.who(victim)} 使用【斩】。`);
+        this.addLog(`${this.who(seat)} 发动【惑心】，令 ${this.who(target)} 对 ${this.who(victim)} 使用【斩】。`, { type: 'use', from: seat, to: [target], cards: [], skill: '惑心' });
         const z = await this.askForCard(target, ['zhan'], { kind: 'huoxin', victim, from: seat });
         if (z) {
-          this.addLog(`${this.who(target)} 对 ${this.who(victim)} 使用了 ${cardText(z[0])}。`);
+          this.addLog(`${this.who(target)} 对 ${this.who(victim)} 使用了 ${cardText(z[0])}。`, { type: 'use', from: target, to: [victim], cards: z });
           this.markHostile(target, victim, HOSTILE_WEIGHT.forced);
           await this.resolveZhan(target, victim);
         } else {
@@ -785,7 +803,7 @@ export class Game {
         const slot = (Object.keys(t.equips) as Array<keyof Player['equips']>).find((k) => t.equips[k] === pick)!;
         delete t.equips[slot];
         this.discard([pick]);
-        this.addLog(`${this.who(user)} 发动【骁勇】，弃置了 ${this.who(target)} 的 ${cardText(pick)}。`);
+        this.addLog(`${this.who(user)} 发动【骁勇】，弃置了 ${this.who(target)} 的 ${cardText(pick)}。`, { type: 'discard', from: target, cards: [pick] });
       }
       // 锦帆
       if (dealt > 0 && this.is(user, 'ganning') && t.alive && t.hand.length > 0) {
@@ -816,7 +834,7 @@ export class Game {
     const dodge = await this.askForCard(target, ['bi'], { kind: 'dodge', source }, this.weaponKey(target) === 'tiejiqiang');
     if (dodge) {
       const how = dodge.length === 2 ? `将 ${dodge.map(cardText).join('、')} 当作【避】打出` : `打出 ${cardText(dodge[0])}`;
-      this.addLog(`${this.who(target)} ${how}，抵消了【斩】。`);
+      this.addLog(`${this.who(target)} ${how}，抵消了【斩】。`, { type: 'use', from: target, to: [], cards: dodge });
       // 持重
       if (this.is(target, 'luxun') && target !== this.current) {
         this.addLog(`${this.who(target)} 发动【持重】。`);
@@ -830,7 +848,7 @@ export class Game {
         const c = await this.askForCard(s, ['bi'], { kind: 'haoling', lord: target, source });
         if (c) {
           this.markHelp(s, target, HELP_WEIGHT.cover);
-          this.addLog(`${this.who(s)} 响应【号令】，替 ${this.who(target)} 打出 ${cardText(c[0])}，抵消了【斩】。`);
+          this.addLog(`${this.who(s)} 响应【号令】，替 ${this.who(target)} 打出 ${cardText(c[0])}，抵消了【斩】。`, { type: 'use', from: s, to: [target], cards: c });
           return true;
         }
       }
@@ -884,7 +902,7 @@ export class Game {
         if (!c) continue;
         this.markShipo(s, trick.key, target, !cancelled);
         const what = cancelled ? '【识破】' : `${cardText(trick)} 对 ${this.who(target)} 的效果`;
-        this.addLog(`${this.who(s)} 打出 ${cardText(c[0])}，抵消了${what}。`);
+        this.addLog(`${this.who(s)} 打出 ${cardText(c[0])}，抵消了${what}。`, { type: 'use', from: s, to: [target], cards: c });
         cancelled = !cancelled;
         played = true;
         break;
@@ -942,7 +960,7 @@ export class Game {
       this.yulinTurn.set(target, this.turn);
       const paid = await this.askForCard(target, BASIC_KEYS, { kind: 'yulin', source });
       if (paid) {
-        this.addLog(`${this.who(target)} 发动【鱼鳞甲】，弃置 ${cardText(paid[0])} 防止了伤害。`);
+        this.addLog(`${this.who(target)} 发动【鱼鳞甲】，弃置 ${cardText(paid[0])} 防止了伤害。`, { type: 'use', from: target, to: [], cards: paid });
         return 0;
       }
     }
@@ -958,7 +976,7 @@ export class Game {
     t.hp -= amount;
     if (source === this.current && source !== target) this.dealtDamageThisTurn = true;
     const from = source === null ? '' : `${this.who(source)} 对 `;
-    this.addLog(`${from}${this.who(target)} 造成 ${amount} 点伤害，体力 ${t.hp}/${t.maxHp}。`);
+    this.addLog(`${from}${this.who(target)} 造成 ${amount} 点伤害，体力 ${t.hp}/${t.maxHp}。`, { type: 'damage', seat: target, amount, from: source });
     if (t.hp <= 0) await this.dying(target, source);
 
     // 霸业
@@ -995,17 +1013,17 @@ export class Game {
     const before = p.hp;
     p.hp = Math.min(p.maxHp, p.hp + amount);
     if (p.hp <= before) return;
-    this.addLog(`${this.who(seat)} 回复 ${p.hp - before} 点体力，体力 ${p.hp}/${p.maxHp}。`);
+    this.addLog(`${this.who(seat)} 回复 ${p.hp - before} 点体力，体力 ${p.hp}/${p.maxHp}。`, { type: 'recover', seat, amount: p.hp - before });
   }
 
   async dying(seat: number, killer: number | null): Promise<void> {
     const t = this.players[seat];
-    this.addLog(`${this.who(seat)} 进入濒死状态！`);
+    this.addLog(`${this.who(seat)} 进入濒死状态！`, { type: 'dying', seat });
     for (const s of this.aliveFrom(this.current)) {
       while (t.hp <= 0) {
         const card = await this.askForCard(s, ['yao'], { kind: 'save', dying: seat });
         if (!card) break;
-        this.addLog(`${this.who(s)} 对 ${this.who(seat)} 使用了 ${cardText(card[0])}。`);
+        this.addLog(`${this.who(s)} 对 ${this.who(seat)} 使用了 ${cardText(card[0])}。`, { type: 'use', from: s, to: [seat], cards: card });
         this.markHelp(s, seat, HELP_WEIGHT.save);
         this.recover(seat, 1);
         // 桃园
@@ -1023,7 +1041,7 @@ export class Game {
     const t = this.players[seat];
     t.alive = false;
     this.deathOrder.push(seat);
-    this.addLog(`${this.who(seat)} 阵亡，身份是【${ROLE_NAME[t.role]}】。`);
+    this.addLog(`${this.who(seat)} 阵亡，身份是【${ROLE_NAME[t.role]}】。`, { type: 'death', seat });
     this.discard(t.hand.splice(0));
     this.discard(this.takeAllEquips(t));
 
@@ -1094,7 +1112,8 @@ export class Game {
     const chosen = valid ? unique : p.hand.slice(-excess).map((c) => c.id);
     const cards = chosen.map((id) => this.takeFromHand(p, id)!);
     this.discard(cards);
-    this.addLog(`${this.who(p.seat)} 弃置了 ${cards.map(cardText).join('、')}。`);
+    this.beginResolution();
+    this.addLog(`${this.who(p.seat)} 弃置了 ${cards.map(cardText).join('、')}。`, { type: 'discard', from: p.seat, cards });
   }
 
   // ───────────── 视图与询问 ─────────────

@@ -139,7 +139,22 @@ export interface Controller {
   decide<R extends Request>(view: GameView, req: R): Promise<Response<R>>;
 }
 
+/** 日志附带的结构化事件，供界面做动画与出牌区展示（不影响规则） */
+export type LogEvent =
+  | { type: 'turn'; seat: number }
+  /**
+   * 使用 / 打出牌或发动技能；to 为指向的角色（可为空），skill 为技能名。
+   * start 为 true 表示一次新结算的开始（之后的响应牌都属于这次结算）。
+   */
+  | { type: 'use'; from: number; to: number[]; cards: Card[]; skill?: string; start?: true }
+  | { type: 'discard'; from: number; cards: Card[]; start?: true }
+  | { type: 'damage'; seat: number; amount: number; from: number | null }
+  | { type: 'recover'; seat: number; amount: number }
+  | { type: 'dying'; seat: number }
+  | { type: 'death'; seat: number };
+
 export interface LogEntry {
   turn: number;
   text: string;
+  event?: LogEvent;
 }

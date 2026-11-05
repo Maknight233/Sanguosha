@@ -99,11 +99,12 @@ interface SeatProps {
 
 export function SeatView({ p, isCurrent, selectable, selected, distance, inRange, onClick }: SeatProps) {
   const g = p.general ? generalDef(p.general) : null;
-  const cls = ['seat', g && `faction-${g.faction}`, isCurrent && 'current', !p.alive && 'dead', selectable && 'selectable', selected && 'selected']
+  const dying = p.alive && p.hp <= 0;
+  const cls = ['seat', g && `faction-${g.faction}`, isCurrent && 'current', !p.alive && 'dead', dying && 'dying', selectable && 'selectable', selected && 'selected']
     .filter(Boolean)
     .join(' ');
   return (
-    <div className={cls} onClick={selectable ? onClick : undefined}>
+    <div className={cls} data-seat={p.seat} onClick={selectable ? onClick : undefined}>
       <div className="seat-top">
         <span className="seat-name">{p.name}</span>
         <span className={`role-badge role-${p.role ?? 'unknown'}`}>{p.role ? ROLE_NAME[p.role] : '？'}</span>

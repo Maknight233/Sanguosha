@@ -7,6 +7,7 @@ import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOpti
 import { CardView, Equips, GeneralCard, Hp, Modal, SeatView } from './components';
 import { HumanController, PacedController } from './controllers';
 import { describeRequest, skillName } from './describe';
+import { dyingSeats, EffectsLayer, PlayZone } from './effects';
 
 const HUMAN = 0;
 const NAMES = ['你', '电脑一', '电脑二', '电脑三', '电脑四'];
@@ -50,6 +51,7 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
   const speedRef = useRef(speed);
   speedRef.current = speed;
   const [, rerender] = useReducer((x: number) => x + 1, 0);
+  const tableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const s = createSession(() => speedRef.current, seed === undefined ? undefined : seed + round);
@@ -68,10 +70,16 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
   const { game, human } = session;
   const view = game.view(HUMAN);
   const pending = human.pending;
+  const dying = dyingSeats(game);
+  const shortName = (s: number) => {
+    const p = view.players[s];
+    if (s === HUMAN) return '你';
+    return p.general ? generalDef(p.general).name : p.name;
+  };
 
   return (
     <div className="game-layout">
-      <div className="table">
+      <div className="table" ref={tableRef}>
         {view.players.map((p) =>
           p.seat === HUMAN ? null : (
             <div key={p.seat} className={`area-${SEAT_AREA[p.seat]}`}>
@@ -84,6 +92,12 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
             <div>第 {view.turn} 回合 · {view.turn > 0 ? `${view.players[view.current].name} 的${PHASE_NAME[view.phase]}` : '选将'}</div>
             <div className="muted">牌堆 {view.drawPileCount} 张 · 弃牌堆 {view.discardPileCount} 张</div>
           </div>
+          {dying.map((s) => (
+            <div key={s} className="dying-banner">
+              {shortName(s)} 濒死，求【药】！
+            </div>
+          ))}
+          <PlayZone game={game} shortName={shortName} />
           <div className="speed">
             AI 速度：
             {[
@@ -100,6 +114,7 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
         <div className="area-me">
           <PlayerArea key={pending ? JSON.stringify(pending.req) + game.log.length : "idle"} view={view} human={human} />
         </div>
+        <EffectsLayer key={round} game={game} container={tableRef} />
       </div>
       <aside className="side">
         <div className="side-buttons">
@@ -268,7 +283,10 @@ function PlayerArea({ view, human }: { view: GameView; human: HumanController })
   const hint = req?.type === 'play' ? playHint(sel) : '';
 
   return (
-    <div className={`player-area ${view.current === HUMAN && view.turn > 0 ? 'current' : ''} ${me.alive ? '' : 'dead'}`}>
+    <div
+      data-seat={HUMAN}
+      className={`player-area ${view.current === HUMAN && view.turn > 0 ? 'current' : ''} ${me.alive ? '' : 'dead'} ${me.alive && me.hp <= 0 ? 'dying' : ''}`}
+    >
       <div className="me-info">
         <div>
           <b>{g?.name ?? '选将中'}</b>
@@ -287,7 +305,7 @@ function PlayerArea({ view, human }: { view: GameView; human: HumanController })
         )}
       </div>
       <div className="me-main">
-        <div className="prompt">
+        <div className={`prompt ${req?.type === 'respond' && req.reason.kind === 'save' ? 'urgent' : ''}`}>
           {req ? describeRequest(view, req) : me.alive ? '等待其他角色行动……' : '你已阵亡，正在观战……'}
           {hint && <span className="muted"> · {hint}</span>}
         </div>

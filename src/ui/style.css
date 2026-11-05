@@ -34,6 +34,7 @@ th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; v
 /* 牌桌布局 */
 .game-layout { display: grid; grid-template-columns: 1fr 300px; height: 100vh; }
 .table {
+  position: relative;
   display: grid; gap: 10px; padding: 12px;
   grid-template-columns: 1fr 1fr 1fr;
   grid-template-rows: auto 1fr auto;
@@ -105,11 +106,12 @@ th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; v
 .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 
 /* 卡牌（文字版卡面，预留图片位置） */
-.card { position: relative; width: 78px; height: 112px; border-radius: 7px; border: 2px solid #8b7355; background: #fffdf6; display: flex; flex-direction: column; align-items: center; justify-content: center; user-select: none; transition: transform .1s; }
+.card { color: var(--ink); position: relative; width: 78px; height: 112px; border-radius: 7px; border: 2px solid #8b7355; background: #fffdf6; display: flex; flex-direction: column; align-items: center; justify-content: center; user-select: none; transition: transform .1s; }
 .card-basic { border-color: #8b6b3d; }
 .card-trick { border-color: #6a4c93; background: #fbf8ff; }
 .card-equip { border-color: #2c6e8f; background: #f6fbff; }
 .card.small { width: 60px; height: 86px; }
+.card.small .card-name { font-size: 16px; letter-spacing: 1px; }
 .card.clickable { cursor: pointer; }
 .card.clickable:hover { transform: translateY(-4px); }
 .card.selected { transform: translateY(-12px); box-shadow: 0 0 0 3px #eb5757; }
@@ -136,3 +138,30 @@ th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; v
 .modal h3 { margin-top: 0; }
 .choice-row { display: flex; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
 .modal .hand { margin: 10px 0; min-height: 0; }
+
+/* 出牌区与濒死提示 */
+.play-zone { margin: 10px auto 0; min-height: 120px; max-width: 460px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: flex-start; background: rgba(0,0,0,.18); border-radius: 10px; padding: 8px; }
+.play-zone-empty { color: rgba(255,255,255,.35); align-self: center; letter-spacing: 4px; }
+.played { display: flex; flex-direction: column; align-items: center; animation: played-in .25s ease-out; }
+.played-label { font-size: 11px; color: #fff; margin-top: 2px; max-width: 72px; text-align: center; line-height: 1.3; }
+@keyframes played-in { from { opacity: 0; transform: translateY(-14px) scale(.85); } to { opacity: 1; transform: none; } }
+.dying-banner { margin-top: 8px; display: inline-block; background: #b03a2e; color: #fff; font-weight: bold; padding: 4px 14px; border-radius: 6px; animation: pulse-bg 1s infinite; }
+@keyframes pulse-bg { 50% { background: #eb5757; } }
+.seat.dying, .player-area.dying { animation: dying-border 1s infinite; }
+@keyframes dying-border { 0%, 100% { box-shadow: 0 0 0 3px #b03a2e; } 50% { box-shadow: 0 0 0 5px #eb5757, 0 0 18px #eb5757; } }
+.prompt.urgent { color: #fff; background: #b03a2e; padding: 4px 10px; border-radius: 6px; animation: pulse-bg 1s infinite; }
+.dead-mark { animation: stamp .35s ease-out; }
+@keyframes stamp { from { opacity: 0; transform: translate(-50%, -50%) rotate(-15deg) scale(2.2); } to { opacity: 1; transform: translate(-50%, -50%) rotate(-15deg) scale(1); } }
+
+/* 特效层（不拦截点击） */
+.fx-layer { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.fx-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.fx-arrow { stroke: #f2c94c; stroke-width: 4; stroke-linecap: round; filter: drop-shadow(0 0 3px rgba(0,0,0,.6)); stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: fx-draw .8s ease-out forwards; }
+.fx-arrow.skill { stroke: #bb6bd9; }
+@keyframes fx-draw { 0% { stroke-dashoffset: 1200; opacity: 1; } 35% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+.fx-flash { position: absolute; border-radius: 10px; display: flex; align-items: center; justify-content: center; animation: fx-flash .8s ease-out forwards; }
+.fx-damage { background: rgba(235, 87, 87, .55); }
+.fx-recover { background: rgba(39, 174, 96, .5); }
+@keyframes fx-flash { 0% { opacity: 0; } 20% { opacity: 1; } 100% { opacity: 0; } }
+.fx-float { font-size: 34px; font-weight: bold; color: #fff; text-shadow: 0 0 4px #000, 0 2px 6px #000; animation: fx-float .8s ease-out forwards; }
+@keyframes fx-float { from { transform: translateY(10px); } to { transform: translateY(-26px); } }
