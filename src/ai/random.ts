@@ -1,4 +1,4 @@
-import { isRed } from '../data/cards';
+import { cardDef, isRed } from '../data/cards';
 import { Rng } from '../engine/rng';
 import type { Card, Controller, GameView, PlayAction, Request, Response, SkillOption } from '../engine/types';
 
@@ -60,9 +60,11 @@ export class RandomController implements Controller {
 
   private useSkill(skills: SkillOption[], hand: Card[]): PlayAction {
     const opt = this.rng.pick(skills);
+    if (opt.skill === 'fencheng') return { type: 'skill', skill: opt.skill, cards: [], targets: [] };
     const target = this.rng.pick(opt.targets);
     let cards: number[] = [];
-    if (opt.skill === 'kuanren') cards = [this.rng.pick(hand).id];
+    if (opt.skill === 'kuanren' || opt.skill === 'lianmeng') cards = [this.rng.pick(hand).id];
+    if (opt.skill === 'baodao') cards = [this.rng.pick(hand.filter((c) => cardDef(c.key).kind === 'equip')).id];
     if (opt.skill === 'huoji') {
       const bySuit = new Map<string, Card[]>();
       for (const c of hand) bySuit.set(c.suit, [...(bySuit.get(c.suit) ?? []), c]);

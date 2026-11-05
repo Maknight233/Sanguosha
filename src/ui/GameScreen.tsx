@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { BasicAI } from '../ai/basic';
-import { isRed } from '../data/cards';
+import { cardDef, isRed } from '../data/cards';
 import { generalDef } from '../data/generals';
 import { Game, ROLE_NAME, WINNER_NAME } from '../engine/game';
 import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOption, Winner } from '../engine/types';
@@ -258,7 +258,8 @@ function PlayerArea({ view, human, onInfo }: { view: GameView; human: HumanContr
     if (!req) return false;
     switch (req.type) {
       case 'play':
-        return sel.skill ? true : !!cardOption(c.id);
+        if (sel.skill?.skill === 'baodao') return cardDef(c.key).kind === 'equip';
+        return sel.skill ? sel.skill.cardCount > 0 : !!cardOption(c.id);
       case 'respond':
         return req.accept.includes(c.key) || !!req.allowPair;
       case 'discard':
@@ -292,7 +293,7 @@ function PlayerArea({ view, human, onInfo }: { view: GameView; human: HumanContr
   if (req?.type === 'play') {
     if (sel.option) canConfirm = sel.option.targets.length === 0 || sel.targets.length >= 1;
     if (sel.skill) {
-      const needTargets = sel.skill.skill === 'huoxin' ? 2 : 1;
+      const needTargets = sel.skill.skill === 'huoxin' ? 2 : sel.skill.targets.length === 0 ? 0 : 1;
       canConfirm = picked.length === sel.skill.cardCount && sel.targets.length === needTargets;
       if (sel.skill.skill === 'huoji') canConfirm &&= picked[0].suit === picked[1].suit;
     }
@@ -388,8 +389,10 @@ function playHint(sel: Selection): string {
   }
   if (sel.skill) {
     const parts: string[] = [];
-    if (sel.skill.cardCount > 0) parts.push(`选择 ${sel.skill.cardCount} 张手牌${sel.skill.skill === 'huoji' ? '（同花色）' : ''}`);
-    parts.push(sel.skill.skill === 'huoxin' ? '依次点击出【斩】者与被【斩】者' : '点击目标角色');
+    const cardNote = { huoji: '（同花色）', baodao: '（装备牌）' }[sel.skill.skill as string] ?? '';
+    if (sel.skill.cardCount > 0) parts.push(`选择 ${sel.skill.cardCount} 张手牌${cardNote}`);
+    if (sel.skill.targets.length === 0) parts.push('点击「确定」发动');
+    else parts.push(sel.skill.skill === 'huoxin' ? '依次点击出【斩】者与被【斩】者' : '点击目标角色');
     return parts.join('，');
   }
   return '';

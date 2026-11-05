@@ -8,7 +8,7 @@ function name(view: GameView, seat: number): string {
   return p.general ? `${p.name}（${generalDef(p.general).name}）` : p.name;
 }
 
-const SKILL_NAME: Record<string, string> = { kuanren: '宽仁', huoji: '火计', huoxin: '惑心' };
+const SKILL_NAME: Record<string, string> = { kuanren: '宽仁', huoji: '火计', huoxin: '惑心', baodao: '宝刀', lianmeng: '联盟', fencheng: '焚城' };
 export function skillName(key: string): string {
   return SKILL_NAME[key] ?? key;
 }
@@ -30,6 +30,7 @@ export function describeRequest(view: GameView, req: Request): string {
         xiandeng: '是否发动【先登】？',
         jinfan: '是否发动【锦帆】？',
         yangsheng: '是否发动【养生】？选择要弃置的手牌',
+        sheshen: `是否发动【舍身】，代替 ${req.target === undefined ? '' : name(view, req.target)} 承受伤害？`,
       }[req.reason];
     case 'selectCards':
       switch (req.reason) {

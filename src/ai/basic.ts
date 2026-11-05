@@ -25,8 +25,8 @@ type Relation = 'friend' | 'enemy' | 'neutral';
 
 /** 选将偏好：越靠前越优先 */
 const GENERAL_PREFERENCE = [
-  'zhugeliang', 'guojia', 'caocao', 'liubei', 'zhaoyun', 'sunquan', 'ganning', 'lvbu', 'zhangliao', 'zhouyu',
-  'huatuo', 'luxun', 'zhangjiao', 'guanyu', 'simayi', 'diaochan',
+  'zhugeliang', 'guojia', 'caocao', 'liubei', 'zhaoyun', 'sunquan', 'ganning', 'lvbu', 'zhangliao', 'lusu',
+  'zhouyu', 'dongzhuo', 'huatuo', 'luxun', 'huangzhong', 'zhangjiao', 'guanyu', 'dianwei', 'simayi', 'diaochan',
 ];
 /** 选将扰动幅度：偏好表中相差不到这么多名的武将可能互换顺序 */
 const PICK_JITTER = 8;
@@ -57,6 +57,9 @@ export const RENEGADE_TUNING = {
   /** 平衡模式下主公体力 ≤ 此值时转回帮主公（0 = 不转；模拟中 1 效果最好） */
   balanceLordDangerHp: 1,
 };
+
+/** 焚城发动门槛（敌人 +1、可击杀 +3，队友 −1.5、会被打死 −5） */
+export const FENCHENG_MIN_SCORE = 2;
 
 /** 身份倾向分超过此值才认定敌友（+1 确定忠，−1 确定反） */
 export const LEAN_THRESHOLD = 0.4;
@@ -99,6 +102,7 @@ class Brain {
       case 'chooseCard':
         return this.pickFrom(req.target, req.equips, req.handCount);
       case 'choose':
+        if (req.reason === 'sheshen') return this.sheshen(req.target!, req.amount ?? 1) ? 'yes' : 'no';
         return this.choose(req.reason, req.options);
       case 'selectCards':
         if (req.reason === 'huoxin') return this.cheapest(req.cards, req.count).map((c) => c.id);
@@ -447,7 +451,60 @@ class Brain {
         }
         return null;
       }
+      case 'baodao': {
+        // 先用真【斩】打攻击范围内的敌人；用多余的装备牌打够不着的敌人
+        const t = this.weakest(s.targets.filter(this.isEnemy));
+        if (t === undefined) return null;
+        // 手牌里多余的装备（同槽已有装备）比【斩】便宜，优先用它
+        const spare = this.hand.filter((c) => cardDef(c.key).kind === 'equip' && this.me.equips[cardDef(c.key).slot!]);
+        const zhanReach = this.hand.some((c) => c.key === 'zhan') && this.aliveOthers().some((p) => this.isEnemy(p.seat) && this.inRange(p.seat));
+        let card = this.cheapest(spare, 1)[0];
+        if (!card && !zhanReach) card = this.cheapest(this.hand.filter((c) => cardDef(c.key).kind === 'equip'), 1)[0];
+        if (!card) return null;
+        return { type: 'skill', skill: s.skill, cards: [card.id], targets: [t] };
+      }
+      case 'lianmeng': {
+        // 交给队友（手牌最少者优先）一张不值钱的牌，然后自己摸一张
+        const friends = s.targets.filter(this.isFriend);
+        if (friends.length === 0) return null;
+        const t = [...friends].sort((a, b) => this.view.players[a].handCount - this.view.players[b].handCount)[0];
+        const card = this.cheapest(this.hand, 1)[0];
+        return { type: 'skill', skill: s.skill, cards: [card.id], targets: [t] };
+      }
+      case 'fencheng':
+        return this.fenchengWorth() ? { type: 'skill', skill: s.skill, cards: [], targets: [] } : null;
     }
+  }
+
+  /** 是否在攻击范围内（只看武器与坐骑，公开信息） */
+  private inRange(seat: number): boolean {
+    if (this.me.general === 'huangzhong') return true; // 宝刀
+    const w = this.me.equips.weapon;
+    const range = (w ? cardDef(w.key).range ?? 1 : 1) + (this.me.general === 'lvbu' ? 1 : 0);
+    return seatDistance(this.view.players, this.me.seat, seat) <= range;
+  }
+
+  /** 焚城的收益：打到敌人加分（能打死加更多），打到队友扣分；自己要失去 1 点体力 */
+  private fenchengWorth(): boolean {
+    if (this.me.hp < 2) return false;
+    let score = 0;
+    for (const p of this.aliveOthers()) {
+      const rel = this.relation(p.seat);
+      const lethal = p.hp <= 1;
+      if (rel === 'enemy') score += lethal ? 3 : 1;
+      else if (rel === 'friend') score -= lethal ? 5 : 1.5;
+      // 内奸不能让主公被打死
+      if (this.me.role === 'renegade' && p.seat === this.lord.seat && lethal && this.aliveOthers().length > 1) return false;
+    }
+    return score >= FENCHENG_MIN_SCORE;
+  }
+
+  /** 舍身：替队友挡伤害；自己体力充足，或队友会因此死亡 */
+  private sheshen(target: number, amount: number): boolean {
+    if (!this.isFriend(target)) return false;
+    const t = this.view.players[target];
+    if (this.me.hp <= amount) return false;
+    return this.me.hp - amount >= 2 || t.hp <= amount;
   }
 
   /** 武器评分：射程越远越好；神臂弓在敌人都贴身时毫无用处 */

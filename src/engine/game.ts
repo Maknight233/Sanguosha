@@ -63,7 +63,14 @@ export const HELP_WEIGHT = {
   heal: 1,
   /** 用【识破】替别人挡掉有害锦囊、号令替主公出【避】 */
   cover: 1,
+  /** 舍身：替别人承受伤害 */
+  protect: 1.5,
+  /** 联盟：交给别人一张手牌 */
+  gift: 0.6,
 };
+
+/** 典韦【舍身】摸牌数 */
+export const SHESHEN_DRAW = 2;
 
 /** 对目标有害的锦囊 */
 export const HARMFUL_TRICK_KEYS = new Set(['jieying', 'cefan', 'xiwen', 'biwu']);
@@ -138,6 +145,10 @@ export class Game {
   dealtDamageThisTurn = false;
   /** 张角【聚众】已增加的体力上限 */
   juzhongGained = new Map<number, number>();
+  /** 典韦【舍身】上次发动的回合 */
+  sheshenTurn = -1;
+  /** 已发动过【焚城】（限定技）的角色 */
+  fenchengUsed = new Set<number>();
   private listeners: Array<() => void> = [];
 
   constructor(private readonly opts: GameOptions) {
@@ -499,8 +510,9 @@ export class Game {
   /** 可以成为该角色【斩】目标的角色 */
   zhanTargets(seat: number): number[] {
     const shenbi = this.weaponKey(seat) === 'shenbigong';
+    const anyRange = this.is(seat, 'huangzhong'); // 宝刀：【斩】无视距离
     return this.players
-      .filter((t) => t.alive && this.inAttackRange(seat, t.seat))
+      .filter((t) => t.alive && t.seat !== seat && (anyRange || this.inAttackRange(seat, t.seat)))
       .filter((t) => !(shenbi && this.distance(seat, t.seat) === 1))
       .map((t) => t.seat);
   }
@@ -582,6 +594,16 @@ export class Game {
       }
       const targets = Object.keys(second).map(Number);
       if (targets.length > 0) res.push({ skill: 'huoxin', cardCount: 0, targets, secondTargets: second });
+    }
+    // 宝刀：装备牌当【斩】，无视距离，计入次数
+    if (this.is(seat, 'huangzhong') && this.zhanUsed < this.zhanLimit && p.hand.some(isEquip) && others.length > 0) {
+      res.push({ skill: 'baodao', cardCount: 1, targets: others });
+    }
+    if (this.is(seat, 'lusu') && !this.skillUsed.has('lianmeng') && p.hand.length >= 1 && others.length > 0) {
+      res.push({ skill: 'lianmeng', cardCount: 1, targets: others });
+    }
+    if (this.is(seat, 'dongzhuo') && !this.fenchengUsed.has(seat) && others.length > 0) {
+      res.push({ skill: 'fencheng', cardCount: 0, targets: [] });
     }
     return res;
   }
@@ -726,9 +748,10 @@ export class Game {
     const ids = [...new Set(cardIds)];
     const cards = ids.map((id) => p.hand.find((c) => c.id === id));
     if (ids.length !== opt.cardCount || cards.some((c) => !c)) return;
+    const seat = p.seat;
+    if (opt.skill === 'fencheng') return this.fencheng(p);
     const target = targets[0];
     if (!opt.targets.includes(target)) return;
-    const seat = p.seat;
 
     switch (opt.skill) {
       case 'kuanren': {
@@ -778,7 +801,59 @@ export class Game {
         }
         break;
       }
+      case 'baodao': {
+        const card = cards[0]!;
+        if (!isEquip(card)) return;
+        this.takeFromHand(p, card.id);
+        this.discard([card]);
+        this.zhanUsed++;
+        this.addLog(`${this.who(seat)} 发动【宝刀】，将 ${cardText(card)} 当作【斩】对 ${this.who(target)} 使用。`, {
+          type: 'use',
+          from: seat,
+          to: [target],
+          cards: [card],
+          skill: '宝刀',
+        });
+        this.markHostile(seat, target);
+        await this.resolveZhan(seat, target);
+        break;
+      }
+      case 'lianmeng': {
+        this.skillUsed.add('lianmeng');
+        const card = this.takeFromHand(p, cards[0]!.id)!;
+        this.players[target].hand.push(card);
+        this.addLog(`${this.who(seat)} 发动【联盟】，交给 ${this.who(target)} 一张手牌，然后摸一张牌。`, {
+          type: 'use',
+          from: seat,
+          to: [target],
+          cards: [],
+          skill: '联盟',
+        });
+        this.markHelp(seat, target, HELP_WEIGHT.gift);
+        this.drawCards(p, 1);
+        break;
+      }
     }
+  }
+
+  /** 董卓【焚城】：对所有其他角色各造成 1 点伤害，然后失去 1 点体力 */
+  async fencheng(p: Player): Promise<void> {
+    const seat = p.seat;
+    this.fenchengUsed.add(seat);
+    const targets = this.aliveFrom(seat).slice(1);
+    this.addLog(`${this.who(seat)} 发动限定技【焚城】！`, { type: 'use', from: seat, to: targets, cards: [], skill: '焚城' });
+    for (const t of targets) {
+      if (this.players[t].alive) await this.damage(seat, t, 1);
+    }
+    if (p.alive) await this.loseHp(seat, 1);
+  }
+
+  /** 失去体力（不是伤害，不触发受到伤害后的技能） */
+  async loseHp(seat: number, amount: number): Promise<void> {
+    const p = this.players[seat];
+    p.hp -= amount;
+    this.addLog(`${this.who(seat)} 失去 ${amount} 点体力，体力 ${p.hp}/${p.maxHp}。`, { type: 'damage', seat, amount, from: null });
+    if (p.hp <= 0) await this.dying(seat, null);
   }
 
   async resolveZhan(user: number, target: number): Promise<void> {
@@ -928,6 +1003,10 @@ export class Game {
    */
   async askForCard(seat: number, accept: string[], reason: RespondReason, allowPair = false): Promise<Card[] | null> {
     const p = this.players[seat];
+    // 宝刀：手牌中的装备牌可当作【斩】打出
+    if (accept.includes('zhan') && this.is(seat, 'huangzhong')) {
+      accept = [...new Set([...accept, ...p.hand.filter(isEquip).map((c) => c.key)])];
+    }
     const pairOk = allowPair && hasSameColorPair(p.hand);
     if (!p.hand.some((c) => accept.includes(c.key)) && !pairOk) return null;
     const ans = await this.ask(seat, { type: 'respond', accept, reason, ...(pairOk ? { allowPair: true } : {}) });
@@ -953,6 +1032,7 @@ export class Game {
   /** via：造成伤害的牌（用于鱼鳞甲判断） */
   /** 返回实际造成的伤害值 */
   async damage(source: number | null, target: number, amount: number, via?: 'zhan'): Promise<number> {
+    if (await this.sheshen(source, target, amount, via)) return 0;
     const t = this.players[target];
     const armor = t.equips.armor?.key;
 
@@ -987,6 +1067,36 @@ export class Game {
     // 谋算
     if (this.is(target, 'guojia')) await this.mousuan(target);
     return amount;
+  }
+
+  /** 典韦【舍身】：代替距离 1 的其他角色承受伤害，然后摸牌；发动返回 true（原目标不受伤害） */
+  private async sheshen(source: number | null, target: number, amount: number, via?: 'zhan'): Promise<boolean> {
+    if (this.sheshenTurn === this.turn) return false;
+    const dw = this.players.find((x) => this.is(x.seat, 'dianwei'));
+    if (!dw || dw.seat === target || this.distance(dw.seat, target) !== 1) return false;
+    const ans = await this.ask(dw.seat, {
+      type: 'choose',
+      reason: 'sheshen',
+      target,
+      amount,
+      options: [
+        { id: 'yes', label: `发动【舍身】：代替 ${this.who(target)} 承受 ${amount} 点伤害，然后摸 ${SHESHEN_DRAW} 张牌` },
+        { id: 'no', label: '不发动' },
+      ],
+    });
+    if (ans !== 'yes') return false;
+    this.sheshenTurn = this.turn;
+    this.addLog(`${this.who(dw.seat)} 发动【舍身】，代替 ${this.who(target)} 承受伤害。`, {
+      type: 'use',
+      from: dw.seat,
+      to: [target],
+      cards: [],
+      skill: '舍身',
+    });
+    this.markHelp(dw.seat, target, HELP_WEIGHT.protect);
+    await this.damage(source, dw.seat, amount, via);
+    if (dw.alive) this.drawCards(dw, SHESHEN_DRAW);
+    return true;
   }
 
   async mousuan(seat: number): Promise<void> {
@@ -1156,6 +1266,10 @@ export class Game {
     for (const p of this.players) n += p.hand.length + Object.values(p.equips).filter(Boolean).length;
     return n;
   }
+}
+
+function isEquip(c: Card): boolean {
+  return cardDef(c.key).kind === 'equip';
 }
 
 function hasSameColorPair(hand: Card[]): boolean {

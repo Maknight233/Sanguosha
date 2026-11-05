@@ -70,10 +70,10 @@ export interface PlayOption {
 
 /** 出牌阶段可发动的主动技能 */
 export interface SkillOption {
-  skill: 'kuanren' | 'huoji' | 'huoxin';
+  skill: 'kuanren' | 'huoji' | 'huoxin' | 'baodao' | 'lianmeng' | 'fencheng';
   /** 需要弃置/使用的手牌张数 */
   cardCount: number;
-  /** 第一目标候选 */
+  /** 第一目标候选；空数组表示无需指定目标（如焚城） */
   targets: number[];
   /** 惑心：第一目标 → 第二目标候选 */
   secondTargets?: Record<number, number[]>;
@@ -97,7 +97,7 @@ export type RespondReason =
   /** 惑心：须对 victim 使用【斩】，否则交给 from 一张手牌 */
   | { kind: 'huoxin'; victim: number; from: number };
 
-export type ChooseReason = 'xiuzheng' | 'xiandeng' | 'jinfan' | 'yangsheng';
+export type ChooseReason = 'xiuzheng' | 'xiandeng' | 'jinfan' | 'yangsheng' | 'sheshen';
 
 export interface ChoiceOption {
   id: string;
@@ -113,7 +113,8 @@ export type Request =
   /** 从目标区域选一张牌：手牌随机抽取，装备可指定 */
   | { type: 'chooseCard'; target: number; handCount: number; equips: Card[]; reason: 'jieying' | 'cefan' }
   /** 养生的选项 id 为要弃置的手牌 id（字符串），'no' 表示不发动 */
-  | { type: 'choose'; options: ChoiceOption[]; reason: ChooseReason }
+  /** target / amount：舍身时为将受到伤害的角色与伤害值 */
+  | { type: 'choose'; options: ChoiceOption[]; reason: ChooseReason; target?: number; amount?: number }
   /** 从给定牌中选出 count 张 */
   | { type: 'selectCards'; cards: Card[]; count: number; reason: 'mousuan' | 'shensuan' | 'xiaoyong' | 'huoxin' }
   /** 将牌排序放回牌堆顶，返回的第一张在最上面 */

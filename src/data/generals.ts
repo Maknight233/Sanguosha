@@ -90,6 +90,23 @@ const defs: GeneralDef[] = [
     key: 'zhangjiao', name: '张角', faction: 'qun', hp: 4,
     skills: [{ name: '聚众', description: '其他角色阵亡后，你增加 1 点体力上限并回复 1 点体力（每局最多因此增加 2 点上限）。' }],
   },
+  // 第三批：每人带一种新机制
+  {
+    key: 'dianwei', name: '典韦', faction: 'wei', hp: 4,
+    skills: [{ name: '舍身', description: '每回合限一次，与你距离为 1 的其他角色受到伤害时，你可以代替其承受此伤害，然后摸两张牌。' }],
+  },
+  {
+    key: 'huangzhong', name: '黄忠', faction: 'shu', hp: 4,
+    skills: [{ name: '宝刀', description: '你使用【斩】无视距离；你可以将手牌中的装备牌当作【斩】使用或打出。' }],
+  },
+  {
+    key: 'lusu', name: '鲁肃', faction: 'wu', hp: 3,
+    skills: [{ name: '联盟', description: '出牌阶段限一次，你可以交给一名其他角色一张手牌，然后你摸一张牌。' }],
+  },
+  {
+    key: 'dongzhuo', name: '董卓', faction: 'qun', hp: 5,
+    skills: [{ name: '焚城', description: '限定技（每局限一次），出牌阶段，你可以对所有其他角色各造成 1 点伤害，然后你失去 1 点体力。' }],
+  },
 ];
 
 export const GENERALS: Record<string, GeneralDef> = Object.fromEntries(defs.map((g) => [g.key, g]));
