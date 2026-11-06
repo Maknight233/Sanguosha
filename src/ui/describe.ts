@@ -1,6 +1,12 @@
-import { cardDef } from '../data/cards';
+import { cardDef, cardText } from '../data/cards';
 import { generalDef } from '../data/generals';
-import type { GameView, Request } from '../engine/types';
+import type { GameView, JudgeInfo, Request } from '../engine/types';
+
+function judgeName(view: GameView, j: JudgeInfo | undefined): string {
+  if (!j) return '';
+  const what = j.what === 'qixi' ? '【奇袭】' : j.what ? `【${cardDef(j.what).name}】` : '';
+  return `${name(view, j.seat)} 的${what}判定牌为 ${cardText(j.result)}`;
+}
 
 function name(view: GameView, seat: number): string {
   const p = view.players[seat];
@@ -8,7 +14,7 @@ function name(view: GameView, seat: number): string {
   return p.general ? `${p.name}（${generalDef(p.general).name}）` : p.name;
 }
 
-const SKILL_NAME: Record<string, string> = { kuanren: '宽仁', huoji: '火计', huoxin: '惑心', baodao: '宝刀', lianmeng: '联盟', fencheng: '焚城' };
+const SKILL_NAME: Record<string, string> = { kuanren: '宽仁', huoji: '火计', huoxin: '惑心', baodao: '宝刀', lianmeng: '联盟', fencheng: '焚城', qixi: '奇袭', dujiang: '渡江' };
 export function skillName(key: string): string {
   return SKILL_NAME[key] ?? key;
 }
@@ -31,13 +37,16 @@ export function describeRequest(view: GameView, req: Request): string {
         jinfan: '是否发动【锦帆】？',
         yangsheng: '是否发动【养生】？选择要弃置的手牌',
         sheshen: `是否发动【舍身】，代替 ${req.target === undefined ? '' : name(view, req.target)} 承受伤害？`,
+        dingce: `${judgeName(view, req.judge)}，是否发动【定策】打出一张手牌代替？`,
+        bushi: `${judgeName(view, req.judge)}，是否发动【卜筮】获得之？`,
+        qixi: '【奇袭】判定为黑色：选择一名距离为 1 的角色，视为对其使用【斩】',
       }[req.reason];
     case 'selectCards':
       switch (req.reason) {
         case 'mousuan':
           return '【谋算】：选择 1 张牌获得';
         case 'shensuan':
-          return '【神算】：选择 2 张牌获得，另一张置于牌堆底';
+          return `【神算】：选择 ${req.count} 张牌获得，其余置于牌堆底`;
         case 'xiaoyong':
           return '【骁勇】：选择要弃置的装备';
         case 'huoxin':

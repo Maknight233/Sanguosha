@@ -13,6 +13,7 @@ import type {
   PlayOption,
   Player,
   Request,
+  JudgeInfo,
   RespondReason,
   Response,
   Role,
@@ -155,6 +156,10 @@ export class Game {
   duanliangActive = false;
   /** 本回合当前角色的【军令】判定生效（不能使用【斩】） */
   junlingActive = false;
+  /** 正在判定、尚未结算的判定牌（计入牌数守恒） */
+  pendingJudge: Card | null = null;
+  /** 于吉【卜筮】上次发动的回合 */
+  bushiTurn = -1;
   private listeners: Array<() => void> = [];
 
   constructor(private readonly opts: GameOptions) {
@@ -381,8 +386,9 @@ export class Game {
    */
   async judgePhase(p: Player): Promise<void> {
     while (p.judge.length > 0 && p.alive) {
-      // 结算完毕前牌仍留在判定区（保证任何时刻牌数守恒）
-      const { card, from } = p.judge[0];
+      // 结算完毕前牌仍留在判定区（保证任何时刻牌数守恒）；渡江的牌按【断粮】结算
+      const { card: real, from, as } = p.judge[0];
+      const card = as ? { ...real, key: as } : real;
       const done = () => this.discard(p.judge.splice(0, 1).map((j) => j.card));
       this.beginResolution();
       this.addLog(`${this.who(p.seat)} 的 ${cardText(card)} 开始判定。`, { type: 'use', from: p.seat, to: [], cards: [card], skill: '判定' });
@@ -390,19 +396,78 @@ export class Game {
         done();
         continue;
       }
-      const result = this.takeTop(1)[0];
+      const result = await this.judge(p.seat, card.key);
       done();
       if (!result) continue;
-      this.discard([result]);
       const effective = card.key === 'duanliang' ? result.suit !== 'club' : !isRed(result);
       if (effective && card.key === 'duanliang') this.duanliangActive = true;
       if (effective && card.key === 'junling') this.junlingActive = true;
       const effect = card.key === 'duanliang' ? '本回合摸牌阶段少摸 1 张牌' : '本回合不能使用【斩】';
       this.addLog(
         `${this.who(p.seat)} 的【${cardDef(card.key).name}】判定结果为 ${cardText(result)}，${effective ? `生效：${effect}` : '未生效'}。`,
-        { type: 'judge', seat: p.seat, trick: card, result, effective },
+        { type: 'judge', seat: p.seat, what: card.key, trick: card, result, effective },
       );
+      await this.finishJudge(p.seat, result);
     }
+  }
+
+  /**
+   * 进行判定：翻开牌堆顶一张作为判定牌，然后询问荀彧【定策】是否改判。
+   * 返回最终判定牌（仍未结算，结算后须调用 finishJudge）。
+   */
+  async judge(seat: number, what: string): Promise<Card | null> {
+    let result = this.takeTop(1)[0];
+    if (!result) return null;
+    this.pendingJudge = result;
+    // 定策：打出一张手牌代替判定牌，然后摸一张
+    for (const s of this.aliveFrom(this.current)) {
+      const x = this.players[s];
+      if (!this.is(s, 'xunyu') || x.hand.length === 0) continue;
+      const judge: JudgeInfo = { seat, what, result };
+      const ans = await this.ask(s, {
+        type: 'choose',
+        reason: 'dingce',
+        judge,
+        options: [...x.hand.map((c) => ({ id: String(c.id), label: `打出 ${cardText(c)} 代替` })), { id: 'no', label: '不发动' }],
+      });
+      const card = ans === 'no' ? null : this.takeFromHand(x, Number(ans));
+      if (!card) continue;
+      this.discard([result]);
+      this.addLog(`${this.who(s)} 发动【定策】，打出 ${cardText(card)} 代替了判定牌 ${cardText(result)}。`, {
+        type: 'use',
+        from: s,
+        to: s === seat ? [] : [seat],
+        cards: [card],
+        skill: '定策',
+      });
+      result = card;
+      this.pendingJudge = card;
+      this.drawCards(x, 1);
+    }
+    return result;
+  }
+
+  /** 判定牌生效后：于吉【卜筮】可以获得它（其他角色的判定，每回合限一次），否则进入弃牌堆 */
+  async finishJudge(seat: number, result: Card): Promise<void> {
+    this.pendingJudge = null;
+    for (const s of this.aliveFrom(this.current)) {
+      if (s === seat || !this.is(s, 'yuji') || this.bushiTurn === this.turn) continue;
+      const ans = await this.ask(s, {
+        type: 'choose',
+        reason: 'bushi',
+        judge: { seat, what: '', result },
+        options: [
+          { id: 'yes', label: `获得判定牌 ${cardText(result)}` },
+          { id: 'no', label: '不发动' },
+        ],
+      });
+      if (ans !== 'yes') continue;
+      this.bushiTurn = this.turn;
+      this.players[s].hand.push(result);
+      this.addLog(`${this.who(s)} 发动【卜筮】，获得了判定牌 ${cardText(result)}。`);
+      return;
+    }
+    this.discard([result]);
   }
 
   async drawPhase(p: Player): Promise<void> {
@@ -618,7 +683,7 @@ export class Game {
         case 'junling': {
           // 同名延时锦囊不能重复放入；断粮限距离 1
           const targets = others
-            .filter((t) => !t.judge.some((j) => j.card.key === card.key))
+            .filter((t) => !t.judge.some((j) => (j.as ?? j.card.key) === card.key))
             .filter((t) => card.key !== 'duanliang' || this.distance(seat, t.seat) <= 1)
             .map((t) => t.seat);
           if (targets.length > 0) options.push({ cardId: card.id, targets });
@@ -660,6 +725,14 @@ export class Game {
     }
     if (this.is(seat, 'lusu') && !this.skillUsed.has('lianmeng') && p.hand.length >= 1 && others.length > 0) {
       res.push({ skill: 'lianmeng', cardCount: 1, targets: others });
+    }
+    if (this.is(seat, 'weiyan') && !this.skillUsed.has('qixi')) {
+      res.push({ skill: 'qixi', cardCount: 0, targets: [] });
+    }
+    // 渡江：♦ 手牌当【断粮】，不受距离限制
+    if (this.is(seat, 'lvmeng') && !this.skillUsed.has('dujiang') && p.hand.some((c) => c.suit === 'diamond')) {
+      const targets = others.filter((t) => !this.players[t].judge.some((j) => (j.as ?? j.card.key) === 'duanliang'));
+      if (targets.length > 0) res.push({ skill: 'dujiang', cardCount: 1, targets });
     }
     if (this.is(seat, 'dongzhuo') && !this.fenchengUsed.has(seat) && others.length > 0) {
       res.push({ skill: 'fencheng', cardCount: 0, targets: [] });
@@ -821,10 +894,28 @@ export class Game {
     if (ids.length !== opt.cardCount || cards.some((c) => !c)) return;
     const seat = p.seat;
     if (opt.skill === 'fencheng') return this.fencheng(p);
+    if (opt.skill === 'qixi') return this.qixi(p);
     const target = targets[0];
     if (!opt.targets.includes(target)) return;
 
     switch (opt.skill) {
+      case 'dujiang': {
+        const card = cards[0]!;
+        if (card.suit !== 'diamond') return;
+        this.skillUsed.add('dujiang');
+        this.takeFromHand(p, card.id);
+        this.players[target].judge.push({ card, from: seat, as: 'duanliang' });
+        this.markHostile(seat, target, HOSTILE_WEIGHT.delay);
+        this.addLog(`${this.who(seat)} 发动【渡江】，将 ${cardText(card)} 当【断粮】对 ${this.who(target)} 使用。`, {
+          type: 'use',
+          from: seat,
+          to: [target],
+          cards: [card],
+          skill: '渡江',
+        });
+        this.drawCards(p, 1);
+        break;
+      }
       case 'kuanren': {
         this.skillUsed.add('kuanren');
         for (const id of ids) this.takeFromHand(p, id);
@@ -908,6 +999,38 @@ export class Game {
   }
 
   /** 董卓【焚城】：对所有其他角色各造成 1 点伤害，然后失去 1 点体力 */
+  /** 魏延【奇袭】：判定，黑色可以视为对距离 1 的一名其他角色使用【斩】（不计入次数） */
+  async qixi(p: Player): Promise<void> {
+    const seat = p.seat;
+    this.skillUsed.add('qixi');
+    this.addLog(`${this.who(seat)} 发动【奇袭】，进行判定。`, { type: 'use', from: seat, to: [], cards: [], skill: '奇袭' });
+    const result = await this.judge(seat, 'qixi');
+    if (!result) return;
+    const black = !isRed(result);
+    this.addLog(`${this.who(seat)} 的【奇袭】判定结果为 ${cardText(result)}，${black ? '黑色：可以视为使用一张【斩】' : '红色：无效果'}。`, {
+      type: 'judge',
+      seat,
+      what: 'qixi',
+      result,
+      effective: black,
+    });
+    await this.finishJudge(seat, result);
+    if (!p.alive || !black) return;
+    const targets = this.players.filter((t) => t.alive && t.seat !== seat && this.distance(seat, t.seat) <= 1).map((t) => t.seat);
+    if (targets.length === 0) return;
+    const ans = await this.ask(seat, {
+      type: 'choose',
+      reason: 'qixi',
+      options: [...targets.map((t) => ({ id: String(t), label: `视为对 ${this.who(t)} 使用【斩】` })), { id: 'no', label: '不使用' }],
+    });
+    const t = Number(ans);
+    if (ans === 'no' || !targets.includes(t)) return;
+    // 视为使用【斩】（不计入次数）：目标可以打出【避】
+    this.markHostile(seat, t);
+    this.addLog(`${this.who(seat)} 发动【奇袭】，视为对 ${this.who(t)} 使用了【斩】。`, { type: 'use', from: seat, to: [t], cards: [], skill: '奇袭' });
+    await this.resolveZhan(seat, t);
+  }
+
   async fencheng(p: Player): Promise<void> {
     const seat = p.seat;
     this.fenchengUsed.add(seat);
@@ -1335,7 +1458,7 @@ export class Game {
 
   /** 所有牌的总数（用于校验牌不会凭空增减） */
   totalCards(): number {
-    let n = this.drawPile.length + this.discardPile.length;
+    let n = this.drawPile.length + this.discardPile.length + (this.pendingJudge ? 1 : 0);
     for (const p of this.players) n += p.hand.length + Object.values(p.equips).filter(Boolean).length + p.judge.length;
     return n;
   }

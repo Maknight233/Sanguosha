@@ -69,8 +69,10 @@ export function GeneralPanel({ p, isMe, paused, onClose }: { p: PlayerPublic; is
               <div key={j.card.id} className="inspect-equip">
                 <CardView card={j.card} small />
                 <div>
-                  <b>【{cardDef(j.card.key).name}】</b>
-                  <div>{cardDef(j.card.key).description}</div>
+                  <b>
+                    【{cardDef(j.as ?? j.card.key).name}】{j.as && `（渡江：${cardDef(j.card.key).name}）`}
+                  </b>
+                  <div>{cardDef(j.as ?? j.card.key).description}</div>
                 </div>
               </div>
             ))}

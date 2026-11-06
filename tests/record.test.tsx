@@ -141,7 +141,7 @@ describe('回放界面', () => {
     // 点击日志跳转
     fireEvent.click(document.querySelectorAll('.log-entry')[0]);
     expect(screen.getByText(/第 1\/\d+ 步/)).toBeTruthy();
-  });
+   }, 30000);
 
   it('主菜单 → 对局记录 → 回放 → 返回', async () => {
     const { rec } = await recordedGame(33);

@@ -326,6 +326,7 @@ function PlayerArea({
     switch (req.type) {
       case 'play':
         if (sel.skill?.skill === 'baodao') return cardDef(c.key).kind === 'equip';
+        if (sel.skill?.skill === 'dujiang') return c.suit === 'diamond';
         return sel.skill ? sel.skill.cardCount > 0 : !!cardOption(c.id);
       case 'respond':
         return req.accept.includes(c.key) || !!req.allowPair;
@@ -364,6 +365,7 @@ function PlayerArea({
       const needTargets = sel.skill.skill === 'huoxin' ? 2 : sel.skill.targets.length === 0 ? 0 : 1;
       canConfirm = picked.length === sel.skill.cardCount && sel.targets.length === needTargets;
       if (sel.skill.skill === 'huoji') canConfirm &&= picked[0].suit === picked[1].suit;
+      if (sel.skill.skill === 'dujiang') canConfirm &&= picked[0].suit === 'diamond';
     }
   } else if (req?.type === 'respond') {
     canConfirm =
@@ -515,7 +517,7 @@ function playHint(sel: Selection): string {
   }
   if (sel.skill) {
     const parts: string[] = [];
-    const cardNote = { huoji: '（同花色）', baodao: '（装备牌）' }[sel.skill.skill as string] ?? '';
+    const cardNote = { huoji: '（同花色）', baodao: '（装备牌）', dujiang: '（♦ 牌，当【断粮】）' }[sel.skill.skill as string] ?? '';
     if (sel.skill.cardCount > 0) parts.push(`选择 ${sel.skill.cardCount} 张手牌${cardNote}`);
     if (sel.skill.targets.length === 0) parts.push('点击「确定」发动');
     else parts.push(sel.skill.skill === 'huoxin' ? '依次点击出【斩】者与被【斩】者' : '点击目标角色');

@@ -110,8 +110,9 @@ export function JudgeZone({ judge }: { judge: PlayerPublic['judge'] }) {
   return (
     <div className="judge-zone">
       {judge.map((j) => (
-        <span key={j.card.id} className="judge-tag" {...tipProps(() => <CardTip card={j.card} />)}>
-          判定：{cardDef(j.card.key).name}
+        <span key={j.card.id} className="judge-tag" {...tipProps(() => <CardTip card={j.as ? { ...j.card, key: j.as } : j.card} />)}>
+          判定：{cardDef(j.as ?? j.card.key).name}
+          {j.as && '（渡江）'}
         </span>
       ))}
     </div>

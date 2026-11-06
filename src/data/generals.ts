@@ -107,6 +107,23 @@ const defs: GeneralDef[] = [
     key: 'dongzhuo', name: '董卓', faction: 'qun', hp: 5,
     skills: [{ name: '焚城', description: '限定技（每局限一次），出牌阶段，你可以对所有其他角色各造成 1 点伤害，然后你失去 1 点体力。' }],
   },
+  // 第四批（判定）
+  {
+    key: 'xunyu', name: '荀彧', faction: 'wei', hp: 4,
+    skills: [{ name: '定策', description: '一名角色的判定牌生效前，你可以打出一张手牌代替之，然后摸一张牌。' }],
+  },
+  {
+    key: 'weiyan', name: '魏延', faction: 'shu', hp: 4,
+    skills: [{ name: '奇袭', description: '出牌阶段限一次，你可以进行判定：若为黑色，你可以视为对距离为 1 的一名其他角色使用一张【斩】（不计入次数）。' }],
+  },
+  {
+    key: 'lvmeng', name: '吕蒙', faction: 'wu', hp: 4,
+    skills: [{ name: '渡江', description: '出牌阶段限一次，你可以将一张 ♦ 手牌当【断粮】使用（不受距离限制），然后摸一张牌。' }],
+  },
+  {
+    key: 'yuji', name: '于吉', faction: 'qun', hp: 4,
+    skills: [{ name: '卜筮', description: '每回合限一次，其他角色的判定牌生效后，你可以获得之。' }],
+  },
 ];
 
 export const GENERALS: Record<string, GeneralDef> = Object.fromEntries(defs.map((g) => [g.key, g]));

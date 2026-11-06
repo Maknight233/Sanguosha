@@ -114,7 +114,7 @@ describe('延时锦囊：判定', () => {
     stackTop(game, 'club'); // 第 2 张判定：♣ → 断粮不生效
     stackTop(game, 'heart'); // 第 1 张判定：红 → 军令不生效
     await runTurn(game, ctrls, 0);
-    const judged = game.log.flatMap((e) => (e.event?.type === 'judge' ? [e.event.trick.key] : []));
+    const judged = game.log.flatMap((e) => (e.event?.type === 'judge' ? [e.event.trick!.key] : []));
     expect(judged).toEqual(['junling', 'duanliang']);
     expect(game.players[0].hand).toHaveLength(2);
   });

@@ -7,6 +7,7 @@ import type {
   ChooseReason,
   Controller,
   GameView,
+  JudgeInfo,
   PlayAction,
   PlayOption,
   PlayerPublic,
@@ -26,7 +27,8 @@ type Relation = 'friend' | 'enemy' | 'neutral';
 /** 选将偏好：越靠前越优先 */
 const GENERAL_PREFERENCE = [
   'zhugeliang', 'guojia', 'caocao', 'liubei', 'zhaoyun', 'sunquan', 'ganning', 'lvbu', 'zhangliao', 'lusu',
-  'zhouyu', 'dongzhuo', 'huatuo', 'luxun', 'huangzhong', 'zhangjiao', 'guanyu', 'dianwei', 'simayi', 'diaochan',
+  'weiyan', 'xunyu', 'zhouyu', 'dongzhuo', 'huatuo', 'lvmeng', 'yuji', 'luxun', 'huangzhong', 'zhangjiao',
+  'guanyu', 'dianwei', 'simayi', 'diaochan',
 ];
 /** 选将扰动幅度：偏好表中相差不到这么多名的武将可能互换顺序 */
 const PICK_JITTER = 8;
@@ -115,6 +117,7 @@ class Brain {
         return this.pickFrom(req.target, req.equips, req.handCount);
       case 'choose':
         if (req.reason === 'sheshen') return this.sheshen(req.target!, req.amount ?? 1) ? 'yes' : 'no';
+        if (req.reason === 'dingce') return this.dingce(req.judge!);
         return this.choose(req.reason, req.options);
       case 'selectCards':
         if (req.reason === 'huoxin') return this.cheapest(req.cards, req.count).map((c) => c.id);
@@ -520,7 +523,37 @@ class Brain {
       }
       case 'fencheng':
         return this.fenchengWorth() ? { type: 'skill', skill: s.skill, cards: [], targets: [] } : null;
+      case 'qixi':
+        return { type: 'skill', skill: s.skill, cards: [], targets: [] };
+      case 'dujiang': {
+        // 用不值钱的 ♦ 牌给体力高、手牌少的敌人上【断粮】
+        const card = this.cheapest(this.hand.filter((c) => c.suit === 'diamond'), 1)[0];
+        if (!card || this.value(card) > 4) return null;
+        const t = this.mostBy(s.targets.filter(this.isEnemy), (x) => this.view.players[x].hp - this.view.players[x].handCount / 2);
+        return t === undefined ? null : { type: 'skill', skill: s.skill, cards: [card.id], targets: [t] };
+      }
     }
+  }
+
+  /**
+   * 定策：这次判定希望得到什么结果。返回判定牌 → 是否符合我的期望；null 表示无所谓。
+   * 延时锦囊：敌人中招好、队友中招坏；奇袭：队友希望黑色（打人），敌人希望红色（只摸牌）。
+   */
+  private judgeWish(j: JudgeInfo): ((c: Card) => boolean) | null {
+    const rel = this.relation(j.seat);
+    if (rel === 'neutral') return null;
+    const friend = rel === 'friend';
+    if (j.what === 'qixi') return (c) => isRed(c) !== friend;
+    const effective = j.what === 'duanliang' ? (c: Card) => c.suit !== 'club' : (c: Card) => !isRed(c);
+    return (c) => effective(c) === !friend;
+  }
+
+  private dingce(j: JudgeInfo): string {
+    const wish = this.judgeWish(j);
+    if (!wish || wish(j.result)) return 'no';
+    const card = this.cheapest(this.hand.filter(wish), 1)[0];
+    // 不为改判舍弃【药】
+    return card && card.key !== 'yao' ? String(card.id) : 'no';
   }
 
   /** 分数最高的座位（反贼仍优先针对主公） */
@@ -682,7 +715,11 @@ class Brain {
 
   private choose(reason: ChooseReason, options: ChoiceOption[]): string {
     if (reason === 'xiuzheng') return this.me.hp < this.me.maxHp ? 'recover' : 'draw';
-    if (reason === 'jinfan') return 'yes';
+    if (reason === 'jinfan' || reason === 'bushi') return 'yes';
+    if (reason === 'qixi') {
+      const t = this.weakest(options.filter((o) => o.id !== 'no').map((o) => Number(o.id)).filter(this.isEnemy));
+      return t === undefined ? 'no' : String(t);
+    }
     if (reason === 'yangsheng') {
       // 弃最不值钱的手牌回血
       const c = this.cheapest(this.hand, 1)[0];

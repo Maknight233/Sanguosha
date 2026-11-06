@@ -18,6 +18,8 @@ export interface Card {
 export interface JudgeCard {
   card: Card;
   from: number;
+  /** 当作哪种延时锦囊（吕蒙【渡江】把 ♦ 牌当【断粮】）；不填则为牌本身 */
+  as?: string;
 }
 
 export interface Player {
@@ -80,7 +82,7 @@ export interface PlayOption {
 
 /** 出牌阶段可发动的主动技能 */
 export interface SkillOption {
-  skill: 'kuanren' | 'huoji' | 'huoxin' | 'baodao' | 'lianmeng' | 'fencheng';
+  skill: 'kuanren' | 'huoji' | 'huoxin' | 'baodao' | 'lianmeng' | 'fencheng' | 'qixi' | 'dujiang';
   /** 需要弃置/使用的手牌张数 */
   cardCount: number;
   /** 第一目标候选；空数组表示无需指定目标（如焚城） */
@@ -107,7 +109,16 @@ export type RespondReason =
   /** 惑心：须对 victim 使用【斩】，否则交给 from 一张手牌 */
   | { kind: 'huoxin'; victim: number; from: number };
 
-export type ChooseReason = 'xiuzheng' | 'xiandeng' | 'jinfan' | 'yangsheng' | 'sheshen';
+export type ChooseReason = 'xiuzheng' | 'xiandeng' | 'jinfan' | 'yangsheng' | 'sheshen' | 'dingce' | 'bushi' | 'qixi';
+
+/** 判定的内容：延时锦囊的牌名，或 'qixi'（魏延【奇袭】） */
+export interface JudgeInfo {
+  /** 进行判定的角色 */
+  seat: number;
+  what: string;
+  /** 当前判定牌 */
+  result: Card;
+}
 
 export interface ChoiceOption {
   id: string;
@@ -124,7 +135,8 @@ export type Request =
   | { type: 'chooseCard'; target: number; handCount: number; equips: Card[]; reason: 'jieying' | 'cefan' }
   /** 养生的选项 id 为要弃置的手牌 id（字符串），'no' 表示不发动 */
   /** target / amount：舍身时为将受到伤害的角色与伤害值 */
-  | { type: 'choose'; options: ChoiceOption[]; reason: ChooseReason; target?: number; amount?: number }
+  /** judge：定策 / 卜筮时为当前判定 */
+  | { type: 'choose'; options: ChoiceOption[]; reason: ChooseReason; target?: number; amount?: number; judge?: JudgeInfo }
   /** 从给定牌中选出 count 张 */
   | { type: 'selectCards'; cards: Card[]; count: number; reason: 'mousuan' | 'shensuan' | 'xiaoyong' | 'huoxin' }
   /** 将牌排序放回牌堆顶，返回的第一张在最上面 */
@@ -162,8 +174,8 @@ export type LogEvent =
   | { type: 'damage'; seat: number; amount: number; from: number | null }
   | { type: 'recover'; seat: number; amount: number }
   | { type: 'dying'; seat: number }
-  /** 判定：seat 的判定区中 trick 判定，结果为 result；effective 为是否生效 */
-  | { type: 'judge'; seat: number; trick: Card; result: Card; effective: boolean }
+  /** 判定：seat 进行判定（what 为延时锦囊牌名或 'qixi'，trick 为延时锦囊），结果为 result；effective 为是否生效（奇袭为是否黑色） */
+  | { type: 'judge'; seat: number; what: string; trick?: Card; result: Card; effective: boolean }
   | { type: 'death'; seat: number };
 
 export interface LogEntry {
