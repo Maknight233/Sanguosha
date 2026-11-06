@@ -191,3 +191,9 @@ th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; v
 /* 日志筛选 */
 .log-filters { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .log-filters button { padding: 2px 8px; font-size: 12px; }
+
+/* 快捷键提示 */
+.general-card { position: relative; }
+.hotkey { position: absolute; right: 4px; bottom: 3px; min-width: 14px; padding: 0 3px; font-size: 11px; line-height: 15px; text-align: center; color: var(--muted); border: 1px solid currentColor; border-radius: 3px; background: rgba(255, 255, 255, .7); pointer-events: none; }
+.general-card .hotkey { top: 6px; bottom: auto; right: 6px; }
+button[data-key]::after { content: attr(data-key); margin-left: 6px; padding: 0 4px; font-size: 11px; border: 1px solid currentColor; border-radius: 3px; opacity: .65; }

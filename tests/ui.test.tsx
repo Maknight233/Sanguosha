@@ -60,6 +60,12 @@ async function botStep(stats: Stats): Promise<'over' | 'acted' | 'idle'> {
     const zhan = usableHandCards().find((c) => isCard(c, '斩'));
     if (zhan) {
       fireEvent.click(zhan);
+      // 只有一个目标时已自动选中，直接确定
+      if (button('确定')) {
+        stats.zhanPlayed++;
+        fireEvent.click(button('确定')!);
+        return 'acted';
+      }
       const seat = document.querySelector<HTMLElement>('.seat.selectable');
       if (seat) {
         fireEvent.click(seat);
@@ -77,7 +83,7 @@ async function botStep(stats: Stats): Promise<'over' | 'acted' | 'idle'> {
   if (prompt.includes('是否打出【避】')) {
     const bi = usableHandCards().find((c) => isCard(c, '避'));
     if (bi) {
-      fireEvent.click(bi);
+      if (!bi.classList.contains('selected')) fireEvent.click(bi);
       stats.dodged++;
       fireEvent.click(button('确定')!);
       return 'acted';

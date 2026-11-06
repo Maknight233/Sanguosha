@@ -33,6 +33,19 @@ export function RulesPage({ onBack }: { onBack: () => void }) {
       <h2>濒死</h2>
       <p>体力降到 0 时进入濒死，从当前回合角色开始依次询问是否使用【药】救援；体力回到 1 以上即脱离，否则阵亡。</p>
 
+      <h2>操作与快捷键</h2>
+      <p>点手牌 → 点目标 → 「确定」。只有一个合法目标时会自动选中；被要求出牌时如果只有一张能出的牌，也会预先选中，按空格即可打出。</p>
+      <table>
+        <tbody>
+          <tr><td className="nowrap">空格 / Enter</td><td>确定</td></tr>
+          <tr><td className="nowrap">Esc</td><td>取消当前选择；没有选择时为「不出」；也用于关闭武将详情</td></tr>
+          <tr><td className="nowrap">1–9、0</td><td>选第 1–10 张手牌（再按一次取消）；弹窗中选第 N 项</td></tr>
+          <tr><td className="nowrap">E</td><td>结束出牌</td></tr>
+          <tr><td className="nowrap">Q、W</td><td>发动第 1、2 个技能</td></tr>
+          <tr><td className="nowrap">Tab</td><td>在可选目标之间切换</td></tr>
+        </tbody>
+      </table>
+
       <h2>卡牌（共 80 张）</h2>
       {KIND_ORDER.map((kind) => (
         <section key={kind}>

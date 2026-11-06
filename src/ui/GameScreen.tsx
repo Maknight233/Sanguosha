@@ -10,6 +10,7 @@ import { filterLog, GeneralPanel, LOG_FILTERS, type LogFilter } from './inspect'
 import { SkillTip, tipProps, TooltipHost } from './tooltip';
 import { describeRequest, skillName } from './describe';
 import { dyingSeats, EffectsLayer, PlayZone } from './effects';
+import { autoPickForRespond, autoTargetsForOption, autoTargetsForSkill, indexKey, SKILL_KEYS, useHotkeys, type KeyAction } from './hotkeys';
 
 const HUMAN = 0;
 const NAMES = ['你', '电脑一', '电脑二', '电脑三', '电脑四'];
@@ -59,6 +60,13 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
   const [, rerender] = useReducer((x: number) => x + 1, 0);
   const tableRef = useRef<HTMLDivElement>(null);
   const [inspect, setInspect] = useState<number | null>(null);
+  // 详情面板打开时：Esc 关闭面板，其他快捷键不生效
+  useHotkeys((a) => {
+    if (a.type !== 'cancel') return a.type === 'confirm' || a.type === 'nextTarget';
+    session?.gate.resume();
+    setInspect(null);
+    return true;
+  }, inspect !== null);
 
   useEffect(() => {
     const s = createSession(() => speedRef.current, seed === undefined ? undefined : seed + round);
@@ -132,6 +140,7 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
             key={pending ? JSON.stringify(pending.req) + game.log.length : 'idle'}
             view={view}
             human={human}
+            keysEnabled={inspect === null && !winner}
             onInfo={() => openInspect(HUMAN)}
           />
         </div>
@@ -238,14 +247,24 @@ function SeatSlot({
 
 // ───────────── 玩家区域：自己的信息、手牌、操作按钮 ─────────────
 
-function PlayerArea({ view, human, onInfo }: { view: GameView; human: HumanController; onInfo: () => void }) {
+function PlayerArea({
+  view,
+  human,
+  keysEnabled,
+  onInfo,
+}: {
+  view: GameView;
+  human: HumanController;
+  keysEnabled: boolean;
+  onInfo: () => void;
+}) {
   const me = view.players[HUMAN];
   const hand = me.hand ?? [];
   const req = human.pending?.req ?? null;
   const sel = useSelection();
 
-  // 新的请求到来时清空选择
-  useEffect(() => setSelection(EMPTY), []);
+  // 新的请求到来时清空选择；响应时若只有一张能出的牌则预先选中
+  useEffect(() => setSelection(req ? { ...EMPTY, cards: autoPickForRespond(req, hand) } : EMPTY), []);
 
   const answer = (r: Response<Request>) => {
     setSelection(EMPTY);
@@ -278,7 +297,8 @@ function PlayerArea({ view, human, onInfo }: { view: GameView; human: HumanContr
       case 'play':
         if (sel.skill) return toggle(sel.skill.cardCount);
         if (has) return setSelection(EMPTY);
-        return setSelection({ cards: [c.id], targets: [], option: cardOption(c.id) ?? null, skill: null });
+        const option = cardOption(c.id) ?? null;
+        return setSelection({ cards: [c.id], targets: option ? autoTargetsForOption(option) : [], option, skill: null });
       case 'respond':
         return toggle(req.allowPair ? 2 : 1);
       case 'discard':
@@ -318,6 +338,47 @@ function PlayerArea({ view, human, onInfo }: { view: GameView; human: HumanContr
     if (req.type === 'discard') return answer(sel.cards);
   }
 
+  const toggleSkill = (s: SkillOption) =>
+    setSelection(sel.skill?.skill === s.skill ? EMPTY : { cards: [], targets: autoTargetsForSkill(s), option: null, skill: s });
+
+  function onKey(a: KeyAction): boolean {
+    if (!req) return false;
+    const hasSelection = sel.cards.length > 0 || sel.targets.length > 0 || !!sel.option || !!sel.skill;
+    switch (a.type) {
+      case 'confirm':
+        confirm();
+        return req.type === 'play' || req.type === 'respond' || req.type === 'discard';
+      case 'cancel':
+        if (hasSelection) return setSelection(EMPTY), true;
+        if (req.type === 'respond') return answer(null), true;
+        return false;
+      case 'index': {
+        const c = hand[a.index];
+        if (c && cardUsable(c)) clickCard(c);
+        return !!c;
+      }
+      case 'end':
+        if (req.type !== 'play') return false;
+        answer({ type: 'end' });
+        return true;
+      case 'skill': {
+        const s = req.type === 'play' ? req.skills[a.index] : undefined;
+        if (s) toggleSkill(s);
+        return !!s;
+      }
+      case 'nextTarget': {
+        if (req.type !== 'play') return false;
+        const first = sel.option?.targets ?? sel.skill?.targets ?? [];
+        if (first.length === 0) return true;
+        const i = sel.targets[0] === undefined ? -1 : first.indexOf(sel.targets[0]);
+        setSelection({ ...sel, targets: [first[(i + 1) % first.length]] });
+        return true;
+      }
+    }
+  }
+  const isModalReq = !!req && req.type !== 'play' && req.type !== 'respond' && req.type !== 'discard';
+  useHotkeys(onKey, keysEnabled && !isModalReq);
+
   const g = me.general ? generalDef(me.general) : null;
   const hint = req?.type === 'play' ? playHint(sel) : '';
 
@@ -350,32 +411,48 @@ function PlayerArea({ view, human, onInfo }: { view: GameView; human: HumanContr
           {hint && <span className="muted"> · {hint}</span>}
         </div>
         <div className="hand">
-          {hand.map((c) => (
-            <CardView key={c.id} card={c} selected={sel.cards.includes(c.id)} disabled={!cardUsable(c)} onClick={() => clickCard(c)} />
+          {hand.map((c, i) => (
+            <CardView
+              key={c.id}
+              card={c}
+              hotkey={req ? indexKey(i) : undefined}
+              selected={sel.cards.includes(c.id)}
+              disabled={!cardUsable(c)}
+              onClick={() => clickCard(c)}
+            />
           ))}
           {hand.length === 0 && <span className="muted">（没有手牌）</span>}
         </div>
         <div className="actions">
           {req?.type === 'play' &&
-            req.skills.map((s) => (
+            req.skills.map((s, i) => (
               <button
                 key={s.skill}
                 className={sel.skill?.skill === s.skill ? 'active' : ''}
-                onClick={() => setSelection(sel.skill?.skill === s.skill ? EMPTY : { cards: [], targets: [], option: null, skill: s })}
+                data-key={SKILL_KEYS[i]?.toUpperCase()}
+                onClick={() => toggleSkill(s)}
               >
                 发动【{skillName(s.skill)}】
               </button>
             ))}
           {(req?.type === 'play' || req?.type === 'respond' || req?.type === 'discard') && (
-            <button className="primary" disabled={!canConfirm} onClick={confirm}>
+            <button className="primary" disabled={!canConfirm} onClick={confirm} data-key="空格">
               确定
             </button>
           )}
-          {req?.type === 'play' && <button onClick={() => answer({ type: 'end' })}>结束出牌</button>}
-          {req?.type === 'respond' && <button onClick={() => answer(null)}>不出</button>}
+          {req?.type === 'play' && (
+            <button onClick={() => answer({ type: 'end' })} data-key="E">
+              结束出牌
+            </button>
+          )}
+          {req?.type === 'respond' && (
+            <button onClick={() => answer(null)} data-key="Esc">
+              不出
+            </button>
+          )}
         </div>
       </div>
-      {req && <RequestModal key={JSON.stringify(req)} view={view} req={req} answer={answer} />}
+      {req && <RequestModal key={JSON.stringify(req)} view={view} req={req} answer={answer} keysEnabled={keysEnabled} />}
     </div>
   );
 }
@@ -400,11 +477,44 @@ function playHint(sel: Selection): string {
 
 // ───────────── 弹窗类请求 ─────────────
 
-function RequestModal({ view, req, answer }: { view: GameView; req: Request; answer: (r: Response<Request>) => void }) {
+function RequestModal({
+  view,
+  req,
+  answer,
+  keysEnabled,
+}: {
+  view: GameView;
+  req: Request;
+  answer: (r: Response<Request>) => void;
+  keysEnabled: boolean;
+}) {
   const [picked, setPicked] = useState<number[]>([]);
   const toggle = (id: number, limit: number) =>
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id].slice(-limit)));
   const title = describeRequest(view, req);
+
+  // 弹窗快捷键：数字键选第 N 项；选牌/排序时空格确定、Esc 清空
+  const chooseCardPicks: CardPick[] =
+    req.type === 'chooseCard'
+      ? [...(req.handCount > 0 ? [{ zone: 'hand' } as CardPick] : []), ...req.equips.map((c) => ({ zone: 'equip', cardId: c.id }) as CardPick)]
+      : [];
+  useHotkeys((a) => {
+    const pickLimit = req.type === 'selectCards' ? req.count : req.type === 'orderCards' ? req.cards.length : 0;
+    if (a.type === 'index') {
+      if (req.type === 'chooseGeneral' && req.options[a.index]) answer(req.options[a.index]);
+      else if (req.type === 'choose' && req.options[a.index]) answer(req.options[a.index].id);
+      else if (req.type === 'chooseCard' && chooseCardPicks[a.index]) answer(chooseCardPicks[a.index]);
+      else if ((req.type === 'selectCards' || req.type === 'orderCards') && req.cards[a.index]) toggle(req.cards[a.index].id, pickLimit);
+      return true;
+    }
+    if (pickLimit > 0 && a.type === 'confirm') {
+      if (picked.length === pickLimit) answer(picked);
+      return true;
+    }
+    if (pickLimit > 0 && a.type === 'cancel') return setPicked([]), true;
+    return a.type === 'confirm' || a.type === 'nextTarget';
+  }, keysEnabled);
+  const hk = (i: number) => indexKey(i);
 
   switch (req.type) {
     case 'chooseGeneral': {
@@ -417,8 +527,8 @@ function RequestModal({ view, req, answer }: { view: GameView; req: Request; ans
             {!amLord && lord.general && `主公选择了【${generalDef(lord.general).name}】。`}
           </p>
           <div className="general-grid">
-            {req.options.map((g) => (
-              <GeneralCard key={g} general={g} lord={amLord} onClick={() => answer(g)} />
+            {req.options.map((g, i) => (
+              <GeneralCard key={g} general={g} lord={amLord} hotkey={hk(i)} onClick={() => answer(g)} />
             ))}
           </div>
         </Modal>
@@ -428,11 +538,20 @@ function RequestModal({ view, req, answer }: { view: GameView; req: Request; ans
       return (
         <Modal title={title}>
           <div className="choice-row">
-            {req.handCount > 0 && <button onClick={() => answer({ zone: 'hand' } as CardPick)}>随机一张手牌（共 {req.handCount} 张）</button>}
+            {req.handCount > 0 && (
+              <button onClick={() => answer({ zone: 'hand' } as CardPick)} data-key={hk(0)}>
+                随机一张手牌（共 {req.handCount} 张）
+              </button>
+            )}
           </div>
           <div className="hand">
-            {req.equips.map((c) => (
-              <CardView key={c.id} card={c} onClick={() => answer({ zone: 'equip', cardId: c.id } as CardPick)} />
+            {req.equips.map((c, i) => (
+              <CardView
+                key={c.id}
+                card={c}
+                hotkey={hk(i + (req.handCount > 0 ? 1 : 0))}
+                onClick={() => answer({ zone: 'equip', cardId: c.id } as CardPick)}
+              />
             ))}
           </div>
         </Modal>
@@ -441,8 +560,8 @@ function RequestModal({ view, req, answer }: { view: GameView; req: Request; ans
       return (
         <Modal title={title}>
           <div className="choice-row">
-            {req.options.map((o) => (
-              <button key={o.id} onClick={() => answer(o.id)}>
+            {req.options.map((o, i) => (
+              <button key={o.id} onClick={() => answer(o.id)} data-key={hk(i)}>
                 {o.label}
               </button>
             ))}
@@ -453,11 +572,11 @@ function RequestModal({ view, req, answer }: { view: GameView; req: Request; ans
       return (
         <Modal title={title}>
           <div className="hand">
-            {req.cards.map((c) => (
-              <CardView key={c.id} card={c} selected={picked.includes(c.id)} onClick={() => toggle(c.id, req.count)} />
+            {req.cards.map((c, i) => (
+              <CardView key={c.id} card={c} hotkey={hk(i)} selected={picked.includes(c.id)} onClick={() => toggle(c.id, req.count)} />
             ))}
           </div>
-          <button className="primary" disabled={picked.length !== req.count} onClick={() => answer(picked)}>
+          <button className="primary" disabled={picked.length !== req.count} onClick={() => answer(picked)} data-key="空格">
             确定
           </button>
         </Modal>
@@ -466,14 +585,14 @@ function RequestModal({ view, req, answer }: { view: GameView; req: Request; ans
       return (
         <Modal title={title}>
           <div className="hand">
-            {req.cards.map((c) => (
+            {req.cards.map((c, i) => (
               <div key={c.id} className="order-wrap">
-                <CardView card={c} selected={picked.includes(c.id)} onClick={() => toggle(c.id, req.cards.length)} />
+                <CardView card={c} hotkey={hk(i)} selected={picked.includes(c.id)} onClick={() => toggle(c.id, req.cards.length)} />
                 {picked.includes(c.id) && <span className="order-num">{picked.indexOf(c.id) + 1}</span>}
               </div>
             ))}
           </div>
-          <button className="primary" disabled={picked.length !== req.cards.length} onClick={() => answer(picked)}>
+          <button className="primary" disabled={picked.length !== req.cards.length} onClick={() => answer(picked)} data-key="空格">
             确定
           </button>
         </Modal>

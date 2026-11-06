@@ -13,11 +13,13 @@ interface CardViewProps {
   selected?: boolean;
   disabled?: boolean;
   small?: boolean;
+  /** 快捷键提示（显示在右下角） */
+  hotkey?: string;
   onClick?: () => void;
 }
 
 /** 卡牌：文字 + CSS 卡面，预留图片位置（CardDef.image） */
-export function CardView({ card, selected, disabled, small, onClick }: CardViewProps) {
+export function CardView({ card, selected, disabled, small, hotkey, onClick }: CardViewProps) {
   const def = cardDef(card.key);
   const cls = ['card', `card-${def.kind}`, selected && 'selected', disabled && 'disabled', small && 'small', onClick && !disabled && 'clickable']
     .filter(Boolean)
@@ -30,14 +32,28 @@ export function CardView({ card, selected, disabled, small, onClick }: CardViewP
       </div>
       <div className="card-art">{def.image ? <img src={def.image} alt={def.name} /> : <span className="card-name">{def.name}</span>}</div>
       <div className="card-kind">{KIND_NAME[def.kind]}</div>
+      {hotkey && !disabled && <span className="hotkey">{hotkey}</span>}
     </div>
   );
 }
 
-export function GeneralCard({ general, selected, onClick, lord }: { general: string; selected?: boolean; onClick?: () => void; lord?: boolean }) {
+export function GeneralCard({
+  general,
+  selected,
+  onClick,
+  lord,
+  hotkey,
+}: {
+  general: string;
+  selected?: boolean;
+  onClick?: () => void;
+  lord?: boolean;
+  hotkey?: string;
+}) {
   const g = generalDef(general);
   return (
     <div className={`general-card faction-${g.faction} ${selected ? 'selected' : ''} ${onClick ? 'clickable' : ''}`} onClick={onClick}>
+      {hotkey && <span className="hotkey">{hotkey}</span>}
       <div className="general-portrait">{g.image ? <img src={g.image} alt={g.name} /> : <span>{g.name}</span>}</div>
       <div className="general-head">
         <span className="faction-tag">{FACTION_NAME[g.faction]}</span>
