@@ -109,7 +109,7 @@ export type RespondReason =
   /** 惑心：须对 victim 使用【斩】，否则交给 from 一张手牌 */
   | { kind: 'huoxin'; victim: number; from: number };
 
-export type ChooseReason = 'xiuzheng' | 'xiandeng' | 'jinfan' | 'yangsheng' | 'sheshen' | 'dingce' | 'bushi' | 'qixi';
+export type ChooseReason = 'xiuzheng' | 'xiandeng' | 'jinfan' | 'yangsheng' | 'sheshen' | 'dingce' | 'bushi' | 'qixi' | 'liuxing';
 
 /** 判定的内容：延时锦囊的牌名，或 'qixi'（魏延【奇袭】） */
 export interface JudgeInfo {
@@ -132,7 +132,7 @@ export type Request =
   | { type: 'respond'; accept: string[]; reason: RespondReason; allowPair?: boolean }
   | { type: 'discard'; count: number }
   /** 从目标区域选一张牌：手牌随机抽取，装备可指定 */
-  | { type: 'chooseCard'; target: number; handCount: number; equips: Card[]; reason: 'jieying' | 'cefan' }
+  | { type: 'chooseCard'; target: number; handCount: number; equips: Card[]; reason: 'jieying' | 'cefan' | 'liuxing' }
   /** 养生的选项 id 为要弃置的手牌 id（字符串），'no' 表示不发动 */
   /** target / amount：舍身时为将受到伤害的角色与伤害值 */
   /** judge：定策 / 卜筮时为当前判定 */

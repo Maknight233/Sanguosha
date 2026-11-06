@@ -80,6 +80,12 @@ export const TIPS: TipDef[] = [
     when: (c) => c.req?.type === 'respond' && c.req.reason.kind === 'save',
   },
   {
+    id: 'tianlei',
+    title: '【天雷】',
+    text: '有人放出了【天雷】：每次轮到持有者都会判定，♠2–9 时受到 3 点伤害；没劈中就传给下家。它会在大家之间转，谁都可能被劈到——落后时它是翻盘的机会。',
+    when: (c) => c.view.players.some((p) => p.judge.some((j) => j.card.key === 'tianlei')),
+  },
+  {
     id: 'judge',
     title: '判定区',
     text: '座位上紫色虚线的「判定：…」是延时锦囊。到他的准备阶段会翻开牌堆顶一张牌判定，按花色决定是否生效；判定前可以用【识破】抵消。',

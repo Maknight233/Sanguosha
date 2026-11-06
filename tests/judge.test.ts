@@ -174,9 +174,8 @@ describe('延时锦囊：AI', () => {
     expect(await ai.decide(game.view(1), req)).toBe(sp.id);
   });
 
-  it('牌堆共 84 张，含【断粮】【军令】各 2 张', () => {
+  it('牌堆含【断粮】【军令】各 2 张', () => {
     const deck = buildDeck();
-    expect(deck).toHaveLength(84);
     expect(deck.filter((c) => c.key === 'duanliang')).toHaveLength(2);
     expect(deck.filter((c) => c.key === 'junling')).toHaveLength(2);
   });

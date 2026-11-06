@@ -1,4 +1,4 @@
-import { BASIC_KEYS, cardDef, isRed } from '../data/cards';
+import { BASIC_KEYS, cardDef, isRed, TIANLEI_DAMAGE, tianleiHit } from '../data/cards';
 import { seatDistance } from '../engine/game';
 import type {
   Card,
@@ -74,7 +74,7 @@ export const SUSPICION_TUNING = {
 /** 连锁推理的迭代轮数 */
 const LEAN_ITERATIONS = 8;
 
-const HARMFUL_TRICKS = new Set(['jieying', 'cefan', 'xiwen', 'biwu', 'duanliang', 'junling']);
+const HARMFUL_TRICKS = new Set(['jieying', 'cefan', 'xiwen', 'biwu', 'duanliang', 'junling', 'tianlei']);
 const EQUIP_STEAL_ORDER = ['armor', 'weapon', 'horsePlus', 'horseMinus'] as const;
 
 /**
@@ -130,6 +130,7 @@ class Brain {
       case 'choose':
         if (req.reason === 'sheshen') return this.sheshen(req.target!, req.amount ?? 1) ? 'yes' : 'no';
         if (req.reason === 'dingce') return this.dingce(req.judge!);
+        if (req.reason === 'liuxing') return this.liuxing(req.target!);
         return this.choose(req.reason, req.options);
       case 'selectCards':
         if (req.reason === 'huoxin') return this.cheapest(req.cards, req.count).map((c) => c.id);
@@ -389,6 +390,8 @@ class Brain {
         return 5.5;
       case 'tiaobing':
         return 5;
+      case 'tianlei':
+        return 1.5;
       case 'shipo':
         return 4.5;
       case 'zhan':
@@ -474,6 +477,8 @@ class Brain {
       const t = this.mostBy(o.targets.filter(this.isEnemy), (s) => this.view.players[s].hp - this.view.players[s].handCount / 2);
       if (t !== undefined) return use(o, t);
     }
+    const tl = byKey('tianlei')[0];
+    if (tl && this.wantTianlei()) return use(tl);
     const xw = byKey('xiwen')[0];
     if (xw) {
       const others = this.aliveOthers();
@@ -560,6 +565,9 @@ class Brain {
     if (rel === 'neutral') return null;
     const friend = rel === 'friend';
     if (j.what === 'qixi') return (c) => isRed(c) !== friend;
+    // 兽面盾：红色才挡住，队友希望红色
+    if (j.what === 'shoumiandun') return (c) => isRed(c) === friend;
+    if (j.what === 'tianlei') return (c) => tianleiHit(c) === !friend;
     const effective = j.what === 'duanliang' ? (c: Card) => c.suit !== 'club' : (c: Card) => !isRed(c);
     return (c) => effective(c) === !friend;
   }
@@ -570,6 +578,31 @@ class Brain {
     const card = this.cheapest(this.hand.filter(wish), 1)[0];
     // 不为改判舍弃【药】
     return card && card.key !== 'yao' ? String(card.id) : 'no';
+  }
+
+  /**
+   * 放【天雷】：先劈自己，所以体力要扛得住（劈完不进濒死）；
+   * 我方体力落后（或持平）时放出来搏一把，反贼 / 内奸更愿意放。
+   */
+  wantTianlei(): boolean {
+    if (this.me.hp <= TIANLEI_DAMAGE) return false;
+    if (this.me.role === 'renegade') return true;
+    let mine = 0;
+    let theirs = 0;
+    for (const p of this.view.players) {
+      if (!p.alive) continue;
+      if (p.seat === this.me.seat || this.isFriend(p.seat)) mine += p.hp;
+      else if (this.isEnemy(p.seat)) theirs += p.hp;
+    }
+    const bias = this.me.role === 'rebel' ? 2 : 0;
+    return mine <= theirs + bias;
+  }
+
+  /** 流星锤：目标是敌人时，弃最不值钱的一张（不弃【药】【避】） */
+  private liuxing(target: number): string {
+    if (!this.isEnemy(target)) return 'no';
+    const c = this.cheapest(this.hand, 1)[0];
+    return c && this.value(c) <= 4 ? String(c.id) : 'no';
   }
 
   /** 分数最高的座位（反贼仍优先针对主公） */
@@ -670,6 +703,11 @@ class Brain {
         const goodForMe = harmful ? this.isEnemy(reason.target) : this.isFriend(reason.target);
         const badForMe = harmful ? this.isFriend(reason.target) : this.isEnemy(reason.target);
         // countering=false：要不要阻止原效果；countering=true：要不要让原效果恢复
+        // 天雷：只在自己或队友会被劈进濒死时挡（挡掉也只是传给下家）
+        if (reason.trick === 'tianlei' && !reason.countering) {
+          const t = this.view.players[reason.target];
+          return (reason.target === this.me.seat || this.isFriend(reason.target)) && t.hp <= TIANLEI_DAMAGE ? first : null;
+        }
         if (!reason.countering) return badForMe && harmful ? first : null;
         return goodForMe ? first : null;
       }

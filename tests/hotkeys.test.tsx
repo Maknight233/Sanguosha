@@ -139,7 +139,7 @@ function keyStep(s: Stats): 'over' | 'acted' | 'idle' {
 describe('键盘操作', () => {
   it('只用快捷键完整打完多局', async () => {
     const s: Stats = { zhan: 0, auto: 0, tabbed: 0, dodged: 0, passed: 0, discarded: 0, modals: 0 };
-    for (const seed of [7, 18, 29]) {
+    for (const seed of [7, 18, 29, 40]) {
       cleanup();
       render(<GameScreen onExit={() => {}} aiDelay={0} seed={seed} />);
       let result = 'idle';

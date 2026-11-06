@@ -1,4 +1,4 @@
-import { BASIC_KEYS, buildDeck, cardDef, cardText, isRed } from '../data/cards';
+import { BASIC_KEYS, buildDeck, cardDef, cardText, isRed, TIANLEI_DAMAGE, tianleiHit } from '../data/cards';
 import { GENERAL_KEYS, generalDef } from '../data/generals';
 import { Rng } from './rng';
 import type {
@@ -76,7 +76,7 @@ export const HELP_WEIGHT = {
 export const SHESHEN_DRAW = 2;
 
 /** 对目标有害的锦囊 */
-export const HARMFUL_TRICK_KEYS = new Set(['jieying', 'cefan', 'xiwen', 'biwu', 'duanliang', 'junling']);
+export const HARMFUL_TRICK_KEYS = new Set(['jieying', 'cefan', 'xiwen', 'biwu', 'duanliang', 'junling', 'tianlei']);
 
 /** 内部用于中断流程的胜负信号 */
 /** 座位距离（只用公开信息：存活、坐骑；不含【先登】等技能），引擎与 AI 共用 */
@@ -385,30 +385,73 @@ export class Game {
    * 被抵消则直接弃置；否则翻开牌堆顶一张作为判定牌。
    */
   async judgePhase(p: Player): Promise<void> {
-    while (p.judge.length > 0 && p.alive) {
+    // i：下一张要判定的牌；没地方可传的【天雷】留在原处，跳过它
+    let i = 0;
+    while (i < p.judge.length && p.alive) {
       // 结算完毕前牌仍留在判定区（保证任何时刻牌数守恒）；渡江的牌按【断粮】结算
-      const { card: real, from, as } = p.judge[0];
+      const { card: real, from, as } = p.judge[i];
       const card = as ? { ...real, key: as } : real;
-      const done = () => this.discard(p.judge.splice(0, 1).map((j) => j.card));
+      const lei = card.key === 'tianlei';
+      const done = () => this.discard(p.judge.splice(i, 1).map((j) => j.card));
+      // 天雷没劈中（或被识破）：移至下家；无处可传时留下
+      const pass = () => {
+        if (!this.passTianlei(p, i)) i++;
+      };
       this.beginResolution();
       this.addLog(`${this.who(p.seat)} 的 ${cardText(card)} 开始判定。`, { type: 'use', from: p.seat, to: [], cards: [card], skill: '判定' });
       if (await this.nullified(card, from, p.seat)) {
-        done();
+        if (lei) pass();
+        else done();
         continue;
       }
       const result = await this.judge(p.seat, card.key);
-      done();
-      if (!result) continue;
-      const effective = card.key === 'duanliang' ? result.suit !== 'club' : !isRed(result);
+      if (!result) {
+        if (lei) pass();
+        else done();
+        continue;
+      }
+      const effective = lei ? tianleiHit(result) : card.key === 'duanliang' ? result.suit !== 'club' : !isRed(result);
+      if (!lei || effective) done();
       if (effective && card.key === 'duanliang') this.duanliangActive = true;
       if (effective && card.key === 'junling') this.junlingActive = true;
-      const effect = card.key === 'duanliang' ? '本回合摸牌阶段少摸 1 张牌' : '本回合不能使用【斩】';
+      const effect = lei ? `受到 ${TIANLEI_DAMAGE} 点伤害` : card.key === 'duanliang' ? '本回合摸牌阶段少摸 1 张牌' : '本回合不能使用【斩】';
       this.addLog(
         `${this.who(p.seat)} 的【${cardDef(card.key).name}】判定结果为 ${cardText(result)}，${effective ? `生效：${effect}` : '未生效'}。`,
         { type: 'judge', seat: p.seat, what: card.key, trick: card, result, effective },
       );
+      if (lei && !effective) pass();
       await this.finishJudge(p.seat, result);
+      if (lei && effective) await this.damage(null, p.seat, TIANLEI_DAMAGE);
     }
+  }
+
+  /** 把 p 判定区第 i 张（【天雷】）移至下一名判定区没有【天雷】的存活角色；返回是否移走 */
+  private passTianlei(p: Player, i: number): boolean {
+    const next = this.aliveFrom(p.seat)
+      .slice(1)
+      .find((s) => !this.players[s].judge.some((j) => j.card.key === 'tianlei'));
+    if (next === undefined) return false;
+    const [j] = p.judge.splice(i, 1);
+    this.players[next].judge.push({ card: j.card, from: j.from });
+    this.addLog(`【天雷】移至 ${this.who(next)} 的判定区。`);
+    return true;
+  }
+
+  /** 兽面盾：成为劫营 / 策反的目标时判定，红色则此牌无效；返回是否挡住 */
+  private async shieldBlocks(target: number): Promise<boolean> {
+    if (this.players[target].equips.armor?.key !== 'shoumiandun') return false;
+    const result = await this.judge(target, 'shoumiandun');
+    if (!result) return false;
+    const ok = isRed(result);
+    this.addLog(`${this.who(target)} 的【兽面盾】判定结果为 ${cardText(result)}，${ok ? '生效：此牌对其无效' : '未生效'}。`, {
+      type: 'judge',
+      seat: target,
+      what: 'shoumiandun',
+      result,
+      effective: ok,
+    });
+    await this.finishJudge(target, result);
+    return ok;
   }
 
   /**
@@ -680,6 +723,10 @@ export class Game {
         case 'biwu':
           if (others.length > 0) options.push({ cardId: card.id, targets: others.map((t) => t.seat) });
           break;
+        case 'tianlei':
+          // 对自己使用；判定区已有【天雷】时不能再用
+          if (!p.judge.some((j) => j.card.key === 'tianlei')) options.push({ cardId: card.id, targets: [] });
+          break;
         case 'duanliang':
         case 'junling': {
           // 同名延时锦囊不能重复放入；断粮限距离 1
@@ -786,6 +833,12 @@ export class Game {
     const user = p.seat;
     if (def.delayed) {
       // 延时锦囊：置于目标判定区，使用时不能被【识破】（判定前才询问）
+      if (card.key === 'tianlei') {
+        p.judge.push({ card, from: user });
+        this.addLog(`${this.who(user)} 使用了 ${cardText(card)}，置于自己的判定区。`, { type: 'use', from: user, to: [], cards: [card] });
+        this.shensuanDraw(p);
+        return;
+      }
       const t = target!;
       this.players[t].judge.push({ card, from: user });
       this.markHostile(user, t, HOSTILE_WEIGHT.delay);
@@ -817,6 +870,7 @@ export class Game {
         const t = target!;
         this.markHostile(user, t, HOSTILE_WEIGHT.steal);
         this.addLog(`${this.who(user)} 对 ${this.who(t)} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: [t], cards: [card] });
+        if (await this.shieldBlocks(t)) break;
         if (await this.nullified(card, user, t)) break;
         const taken = await this.pickCardFrom(user, t, card.key);
         if (!taken) break;
@@ -1055,6 +1109,7 @@ export class Game {
     const t = this.players[target];
     if (!t.alive) return;
     const dodged = await this.askDodge(target, user);
+    if (dodged) await this.liuxingchui(user, target);
     if (!dodged) {
       const dealt = await this.damage(user, target, 1, 'zhan');
       // 先登：发动的回合，【斩】造成伤害后摸一张牌
@@ -1099,6 +1154,27 @@ export class Game {
     }
   }
 
+  /** 流星锤：【斩】被抵消后，可以弃置一张手牌令目标弃置一张牌 */
+  private async liuxingchui(user: number, target: number): Promise<void> {
+    const u = this.players[user];
+    const t = this.players[target];
+    if (this.weaponKey(user) !== 'liuxingchui' || !u.alive || !t.alive || u.hand.length === 0 || !this.hasCards(t)) return;
+    const ans = await this.ask(user, {
+      type: 'choose',
+      reason: 'liuxing',
+      target,
+      options: [...u.hand.map((c) => ({ id: String(c.id), label: `弃置 ${cardText(c)}` })), { id: 'no', label: '不发动' }],
+    });
+    const paid = ans === 'no' ? null : this.takeFromHand(u, Number(ans));
+    if (!paid) return;
+    this.discard([paid]);
+    this.addLog(`${this.who(user)} 发动【流星锤】，弃置了 ${cardText(paid)}。`, { type: 'discard', from: user, cards: [paid] });
+    const taken = await this.pickCardFrom(user, target, 'liuxing');
+    if (!taken) return;
+    this.discard([taken]);
+    this.addLog(`${this.who(target)} 因【流星锤】弃置了 ${cardText(taken)}。`, { type: 'discard', from: target, cards: [taken] });
+  }
+
   /** 询问【避】（含铁脊长枪与号令）；返回是否抵消 */
   async askDodge(target: number, source: number): Promise<boolean> {
     const dodge = await this.askForCard(target, ['bi'], { kind: 'dodge', source }, this.weaponKey(target) === 'tiejiqiang');
@@ -1127,7 +1203,7 @@ export class Game {
   }
 
   /** 劫营/策反：由使用者选择目标的一张牌（手牌随机），从目标处移除并返回 */
-  async pickCardFrom(user: number, target: number, reason: 'jieying' | 'cefan'): Promise<Card | null> {
+  async pickCardFrom(user: number, target: number, reason: 'jieying' | 'cefan' | 'liuxing'): Promise<Card | null> {
     const t = this.players[target];
     const equips = Object.values(t.equips).filter((c): c is Card => !!c);
     if (t.hand.length === 0 && equips.length === 0) return null;
@@ -1238,6 +1314,11 @@ export class Game {
         this.addLog(`${this.who(target)} 发动【鱼鳞甲】，弃置 ${cardText(paid[0])} 防止了伤害。`, { type: 'use', from: target, to: [], cards: paid });
         return 0;
       }
+    }
+    if (via === 'zhan' && armor === 'suozijia' && source !== null && this.distance(source, target) >= 2) {
+      amount -= 1;
+      this.addLog(`${this.who(target)} 的【锁子甲】令伤害 -1。`);
+      if (amount <= 0) return 0;
     }
     if (armor === 'huxinjing' && t.hp === 1) {
       amount -= 1;

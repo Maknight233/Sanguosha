@@ -29,7 +29,7 @@ export function describeRequest(view: GameView, req: Request): string {
     case 'discard':
       return `弃牌阶段：请弃置 ${req.count} 张手牌`;
     case 'chooseCard':
-      return `${req.reason === 'jieying' ? '【劫营】弃置' : '【策反】获得'} ${name(view, req.target)} 的一张牌`;
+      return `${{ jieying: '【劫营】弃置', cefan: '【策反】获得', liuxing: '【流星锤】：令其弃置' }[req.reason]} ${name(view, req.target)} 的一张牌`;
     case 'choose':
       return {
         xiuzheng: '【休整】：请选择',
@@ -40,6 +40,7 @@ export function describeRequest(view: GameView, req: Request): string {
         dingce: `${judgeName(view, req.judge)}，是否发动【定策】打出一张手牌代替？`,
         bushi: `${judgeName(view, req.judge)}，是否发动【卜筮】获得之？`,
         qixi: '【奇袭】判定为黑色：选择一名距离为 1 的角色，视为对其使用【斩】',
+        liuxing: `${req.target === undefined ? '' : name(view, req.target)} 抵消了你的【斩】，是否发动【流星锤】弃置一张手牌，令其弃置一张牌？`,
       }[req.reason];
     case 'selectCards':
       switch (req.reason) {
@@ -71,7 +72,9 @@ export function describeRequest(view: GameView, req: Request): string {
           const trick = cardDef(r.trick).name;
           return r.countering
             ? `有人用【识破】抵消了【${trick}】，是否再用【识破】抵消它？`
-            : cardDef(r.trick).delayed
+            : r.trick === 'tianlei'
+              ? `${name(view, r.target)} 判定区的【天雷】即将判定，是否打出【识破】？（抵消后它会移到下家）`
+              : cardDef(r.trick).delayed
               ? `${name(view, r.target)} 判定区的【${trick}】（${name(view, r.user)} 使用）即将判定，是否打出【识破】？`
               : `${name(view, r.user)} 对 ${name(view, r.target)} 使用了【${trick}】，是否打出【识破】？`;
         }

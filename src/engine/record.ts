@@ -6,7 +6,7 @@ import { Game } from './game';
 import type { Card, Controller, GameView, JudgeCard, LogEntry, Phase, Player, Request, Response, Role, Winner } from './types';
 
 /** 规则改动导致旧记录无法重现时递增 */
-export const RECORD_VERSION = 1;
+export const RECORD_VERSION = 2;
 
 export interface Answer {
   seat: number;
