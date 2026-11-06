@@ -77,9 +77,18 @@ const LEAN_ITERATIONS = 8;
 const HARMFUL_TRICKS = new Set(['jieying', 'cefan', 'xiwen', 'biwu', 'duanliang', 'junling']);
 const EQUIP_STEAL_ORDER = ['armor', 'weapon', 'horsePlus', 'horseMinus'] as const;
 
+/**
+ * AI 难度：普通；简单（固定短板：随便挑目标、不用【识破】、只救自己和主公）。
+ * 简单 AI 仍做身份推理——否则简单忠臣几乎不出手，玩家当主公反而更难（实测主公胜率 62% → 24%）。
+ */
+export type AiLevel = 'easy' | 'normal';
+export const AI_LEVEL_NAME: Record<AiLevel, string> = { easy: '简单', normal: '普通' };
+
 export class BasicAI implements Controller {
+  constructor(readonly level: AiLevel = 'normal') {}
+
   async decide<R extends Request>(view: GameView, req: R): Promise<Response<R>> {
-    return new Brain(view).decide(req) as Response<R>;
+    return new Brain(view, this.level).decide(req) as Response<R>;
   }
 }
 
@@ -97,7 +106,10 @@ class Brain {
 
   private leanCache: number[] | null = null;
 
-  constructor(readonly view: GameView) {
+  constructor(
+    readonly view: GameView,
+    readonly level: AiLevel = 'normal',
+  ) {
     this.me = view.players[view.me];
     this.hand = this.me.hand ?? [];
     this.lord = view.players.find((p) => p.role === 'lord')!;
@@ -354,8 +366,12 @@ class Brain {
   private isEnemy = (seat: number) => this.relation(seat) === 'enemy';
   private isFriend = (seat: number) => this.relation(seat) === 'friend';
 
-  /** 优先攻击体力最低的目标 */
+  /** 优先攻击体力最低的目标（简单：随便挑一个） */
   private weakest(seats: number[]): number | undefined {
+    if (this.level === 'easy') {
+      if (seats.length === 0) return undefined;
+      return seats[hash(`${this.view.turn}|${this.me.seat}|${this.hand.length}|${seats.join(',')}`) % seats.length];
+    }
     // 反贼集火主公
     if (this.me.role === 'rebel' && seats.includes(this.lord.seat)) return this.lord.seat;
     return [...seats].sort((a, b) => this.view.players[a].hp - this.view.players[b].hp)[0];
@@ -648,6 +664,7 @@ class Brain {
       case 'save':
         return this.shouldSave(reason.dying) ? first : null;
       case 'shipo': {
+        if (this.level === 'easy') return null; // 简单：不用【识破】
         const harmful = HARMFUL_TRICKS.has(reason.trick);
         // 原锦囊对目标的效果是否对我有利
         const goodForMe = harmful ? this.isEnemy(reason.target) : this.isFriend(reason.target);
@@ -678,6 +695,8 @@ class Brain {
 
   private shouldSave(dying: number): boolean {
     if (dying === this.me.seat) return true;
+    // 简单：只救自己和（非敌对的）主公
+    if (this.level === 'easy') return dying === this.lord.seat && this.me.role !== 'rebel' && this.aliveOthers().length > 1;
     // 内奸需要主公撑到最后，但最后单挑时不救
     if (this.me.role === 'renegade' && dying === this.lord.seat) return this.aliveOthers().length > 1;
     // 平衡模式：保住最后一个反贼

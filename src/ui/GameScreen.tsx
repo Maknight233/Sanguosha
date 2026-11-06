@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { BasicAI } from '../ai/basic';
+import { AI_LEVEL_NAME, BasicAI, type AiLevel } from '../ai/basic';
 import { cardDef, isRed } from '../data/cards';
 import { generalDef } from '../data/generals';
 import { Game, ROLE_NAME, WINNER_NAME } from '../engine/game';
@@ -38,17 +38,18 @@ interface Session {
   seed: number;
   /** 所有人的回答，按顺序（用于保存回放） */
   answers: Answer[];
+  level: AiLevel;
 }
 
-function createSession(delay: () => number, seed?: number): Session {
+function createSession(delay: () => number, level: AiLevel, seed?: number): Session {
   const human = new HumanController();
   const gate = new PauseGate();
-  const ais = [1, 2, 3, 4].map(() => new PacedController(new BasicAI(), delay, gate));
+  const ais = [1, 2, 3, 4].map(() => new PacedController(new BasicAI(level), delay, gate));
   const answers: Answer[] = [];
   const s = seed ?? Math.floor(Math.random() * 1e9);
   const controllers = [human, ...ais].map((c, seat) => new RecordingController(c, seat, answers));
   const game = new Game({ controllers, names: NAMES, seed: s });
-  return { game, human, ais, gate, pauseOnInspect: true, seed: s, answers };
+  return { game, human, ais, gate, pauseOnInspect: true, seed: s, answers, level };
 }
 
 /** 对局结束后生成记录 */
@@ -68,6 +69,7 @@ function makeRecord(s: Session, winner: Winner): GameRecord {
     role: me.role,
     general: me.general,
     won: team(me.role) === winner,
+    level: s.level,
     logLength: s.game.log.length,
   };
 }
@@ -76,12 +78,14 @@ interface GameScreenProps {
   onExit: () => void;
   /** 查看刚结束这一局的回放 */
   onReplay?: (rec: GameRecord) => void;
+  /** AI 难度 */
+  level?: AiLevel;
   /** 测试用：固定 AI 停顿与随机种子 */
   aiDelay?: number;
   seed?: number;
 }
 
-export function GameScreen({ onExit, onReplay, aiDelay, seed }: GameScreenProps) {
+export function GameScreen({ onExit, onReplay, level = 'normal', aiDelay, seed }: GameScreenProps) {
   const [round, setRound] = useState(0);
   const [session, setSession] = useState<Session | null>(null);
   const [winner, setWinner] = useState<Winner | null>(null);
@@ -101,7 +105,7 @@ export function GameScreen({ onExit, onReplay, aiDelay, seed }: GameScreenProps)
   }, inspect !== null);
 
   useEffect(() => {
-    const s = createSession(() => speedRef.current, seed === undefined ? undefined : seed + round);
+    const s = createSession(() => speedRef.current, level, seed === undefined ? undefined : seed + round);
     setSession(s);
     setWinner(null);
     setRecord(null);
@@ -154,7 +158,9 @@ export function GameScreen({ onExit, onReplay, aiDelay, seed }: GameScreenProps)
         <div className="area-center">
           <div className="center-info">
             <div>第 {view.turn} 回合 · {view.phase === 'over' ? '游戏结束' : view.turn > 0 ? `${view.players[view.current].name} 的${PHASE_NAME[view.phase]}` : '选将'}</div>
-            <div className="muted">牌堆 {view.drawPileCount} 张 · 弃牌堆 {view.discardPileCount} 张</div>
+            <div className="muted">
+              牌堆 {view.drawPileCount} 张 · 弃牌堆 {view.discardPileCount} 张 · AI {AI_LEVEL_NAME[level]}
+            </div>
           </div>
           {dying.map((s) => (
             <div key={s} className="dying-banner">

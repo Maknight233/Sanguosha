@@ -220,3 +220,8 @@ button[data-key]::after { content: attr(data-key); margin-left: 6px; padding: 0 
 .stats-tables { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 12px; }
 .stats-tables table { width: auto; min-width: 240px; }
 .records-table td.win { color: #2e7d32; font-weight: bold; }
+
+/* 难度选择 */
+.level-pick { margin-top: 24px; text-align: center; }
+.level-pick button { margin: 0 4px; }
+.level-note { margin-top: 6px; font-size: 13px; }

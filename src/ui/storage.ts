@@ -1,10 +1,12 @@
 /** 浏览器本地存储：最近的对局记录 + 累计战绩 */
 import type { GameRecord } from '../engine/record';
+import type { AiLevel } from '../ai/basic';
 import type { Role } from '../engine/types';
 
 export const MAX_RECORDS = 20;
 const RECORDS_KEY = 'sanguo.records';
 const STATS_KEY = 'sanguo.stats';
+const LEVEL_KEY = 'sanguo.level';
 
 export interface Tally {
   games: number;
@@ -15,6 +17,8 @@ export interface Stats {
   total: Tally;
   byRole: Partial<Record<Role, Tally>>;
   byGeneral: Record<string, Tally>;
+  /** 按 AI 难度（旧数据没有此项） */
+  byLevel?: Partial<Record<AiLevel, Tally>>;
 }
 
 type KV = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -43,7 +47,7 @@ function read<T>(store: KV, key: string, fallback: T): T {
   }
 }
 
-export const emptyStats = (): Stats => ({ total: { games: 0, wins: 0 }, byRole: {}, byGeneral: {} });
+export const emptyStats = (): Stats => ({ total: { games: 0, wins: 0 }, byRole: {}, byGeneral: {}, byLevel: {} });
 
 export function loadRecords(store: KV = defaultStore()): GameRecord[] {
   return read<GameRecord[]>(store, RECORDS_KEY, []);
@@ -62,6 +66,8 @@ export function saveGame(rec: GameRecord, store: KV = defaultStore()): void {
   stats.total = bump(stats.total, rec.won);
   stats.byRole[rec.role] = bump(stats.byRole[rec.role], rec.won);
   stats.byGeneral[rec.general] = bump(stats.byGeneral[rec.general], rec.won);
+  const level = (rec.level ?? 'normal') as AiLevel;
+  stats.byLevel = { ...stats.byLevel, [level]: bump(stats.byLevel?.[level], rec.won) };
   try {
     store.setItem(RECORDS_KEY, JSON.stringify(records));
   } catch {
@@ -73,6 +79,15 @@ export function saveGame(rec: GameRecord, store: KV = defaultStore()): void {
 
 export function clearStats(store: KV = defaultStore()): void {
   store.removeItem(STATS_KEY);
+}
+
+/** 上次选择的 AI 难度 */
+export function loadLevel(store: KV = defaultStore()): AiLevel {
+  return store.getItem(LEVEL_KEY) === 'easy' ? 'easy' : 'normal';
+}
+
+export function saveLevel(level: AiLevel, store: KV = defaultStore()): void {
+  store.setItem(LEVEL_KEY, level);
 }
 
 export const winRate = (t: Tally | undefined) => (t && t.games > 0 ? `${((t.wins / t.games) * 100).toFixed(0)}%` : '-');

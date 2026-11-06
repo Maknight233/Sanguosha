@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AI_LEVEL_NAME, type AiLevel } from '../ai/basic';
 import { generalDef } from '../data/generals';
 import { ROLE_NAME, WINNER_NAME } from '../engine/game';
 import type { GameRecord } from '../engine/record';
@@ -6,6 +7,8 @@ import type { Role } from '../engine/types';
 import { clearStats, loadRecords, loadStats, MAX_RECORDS, winRate } from './storage';
 
 const ROLES: Role[] = ['lord', 'loyalist', 'rebel', 'renegade'];
+const LEVELS = Object.keys(AI_LEVEL_NAME) as AiLevel[];
+const levelName = (l?: string) => AI_LEVEL_NAME[(l ?? 'normal') as AiLevel] ?? l;
 
 function formatDate(ms: number): string {
   const d = new Date(ms);
@@ -48,6 +51,24 @@ export function RecordsScreen({ onBack, onReplay }: { onBack: () => void; onRepl
                     <td>{ROLE_NAME[r]}</td>
                     <td>{stats.byRole[r]?.games ?? 0}</td>
                     <td>{winRate(stats.byRole[r])}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <table>
+              <thead>
+                <tr>
+                  <th>电脑难度</th>
+                  <th>局数</th>
+                  <th>胜率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {LEVELS.map((l) => (
+                  <tr key={l}>
+                    <td>{AI_LEVEL_NAME[l]}</td>
+                    <td>{stats.byLevel?.[l]?.games ?? 0}</td>
+                    <td>{winRate(stats.byLevel?.[l])}</td>
                   </tr>
                 ))}
               </tbody>
@@ -102,6 +123,7 @@ export function RecordsScreen({ onBack, onReplay }: { onBack: () => void; onRepl
               <th>时间</th>
               <th>你的武将</th>
               <th>身份</th>
+              <th>难度</th>
               <th>结果</th>
               <th>回合</th>
               <th></th>
@@ -113,6 +135,7 @@ export function RecordsScreen({ onBack, onReplay }: { onBack: () => void; onRepl
                 <td>{formatDate(r.date)}</td>
                 <td>{generalDef(r.general).name}</td>
                 <td>{ROLE_NAME[r.role]}</td>
+                <td>{levelName(r.level)}</td>
                 <td className={r.won ? 'win' : 'muted'}>
                   {r.won ? '胜' : '负'}（{WINNER_NAME[r.winner]}获胜）
                 </td>

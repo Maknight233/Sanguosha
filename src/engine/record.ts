@@ -29,6 +29,8 @@ export interface GameRecord {
   role: Role;
   general: string;
   won: boolean;
+  /** AI 难度（'easy' | 'normal'；旧记录没有，视为普通） */
+  level?: string;
   /** 原局日志条数，用于校验回放是否一致 */
   logLength: number;
 }
