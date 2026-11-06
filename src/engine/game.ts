@@ -51,6 +51,8 @@ export const HOSTILE_WEIGHT = {
   zhan: 1,
   /** 劫营、策反：只是拆牌 */
   steal: 0.6,
+  /** 断粮、军令：延时锦囊 */
+  delay: 0.6,
   /** 被惑心逼出的【斩】 */
   forced: 0.5,
 };
@@ -73,7 +75,7 @@ export const HELP_WEIGHT = {
 export const SHESHEN_DRAW = 2;
 
 /** 对目标有害的锦囊 */
-export const HARMFUL_TRICK_KEYS = new Set(['jieying', 'cefan', 'xiwen', 'biwu']);
+export const HARMFUL_TRICK_KEYS = new Set(['jieying', 'cefan', 'xiwen', 'biwu', 'duanliang', 'junling']);
 
 /** 内部用于中断流程的胜负信号 */
 /** 座位距离（只用公开信息：存活、坐骑；不含【先登】等技能），引擎与 AI 共用 */
@@ -149,6 +151,10 @@ export class Game {
   sheshenTurn = -1;
   /** 已发动过【焚城】（限定技）的角色 */
   fenchengUsed = new Set<number>();
+  /** 本回合当前角色的【断粮】判定生效（摸牌阶段少摸 1 张） */
+  duanliangActive = false;
+  /** 本回合当前角色的【军令】判定生效（不能使用【斩】） */
+  junlingActive = false;
   private listeners: Array<() => void> = [];
 
   constructor(private readonly opts: GameOptions) {
@@ -238,6 +244,7 @@ export class Game {
       maxHp: 0,
       hand: [],
       equips: {},
+      judge: [],
       alive: true,
     }));
 
@@ -313,10 +320,14 @@ export class Game {
     this.xiandeng = false;
     this.shensuanDrawn = false;
     this.dealtDamageThisTurn = false;
+    this.duanliangActive = false;
+    this.junlingActive = false;
     this.addLog(`—— 第 ${this.turn} 回合：${this.who(seat)} ——`, { type: 'turn', seat });
 
     this.phase = 'prepare';
     if (this.is(seat, 'huatuo')) await this.yangsheng(p);
+    await this.judgePhase(p);
+    if (!p.alive) return;
     this.phase = 'draw';
     await this.drawPhase(p);
     if (!p.alive) return;
@@ -364,23 +375,56 @@ export class Game {
     if (card.key !== 'yao') this.drawCards(p, 1); // 弃【药】时不摸牌
   }
 
+  /**
+   * 判定：按放入顺序结算判定区的延时锦囊。每张判定前从当前角色开始询问【识破】，
+   * 被抵消则直接弃置；否则翻开牌堆顶一张作为判定牌。
+   */
+  async judgePhase(p: Player): Promise<void> {
+    while (p.judge.length > 0 && p.alive) {
+      // 结算完毕前牌仍留在判定区（保证任何时刻牌数守恒）
+      const { card, from } = p.judge[0];
+      const done = () => this.discard(p.judge.splice(0, 1).map((j) => j.card));
+      this.beginResolution();
+      this.addLog(`${this.who(p.seat)} 的 ${cardText(card)} 开始判定。`, { type: 'use', from: p.seat, to: [], cards: [card], skill: '判定' });
+      if (await this.nullified(card, from, p.seat)) {
+        done();
+        continue;
+      }
+      const result = this.takeTop(1)[0];
+      done();
+      if (!result) continue;
+      this.discard([result]);
+      const effective = card.key === 'duanliang' ? result.suit !== 'club' : !isRed(result);
+      if (effective && card.key === 'duanliang') this.duanliangActive = true;
+      if (effective && card.key === 'junling') this.junlingActive = true;
+      const effect = card.key === 'duanliang' ? '本回合摸牌阶段少摸 1 张牌' : '本回合不能使用【斩】';
+      this.addLog(
+        `${this.who(p.seat)} 的【${cardDef(card.key).name}】判定结果为 ${cardText(result)}，${effective ? `生效：${effect}` : '未生效'}。`,
+        { type: 'judge', seat: p.seat, trick: card, result, effective },
+      );
+    }
+  }
+
   async drawPhase(p: Player): Promise<void> {
     const seat = p.seat;
+    // 断粮：本回合少摸 1 张
+    const less = this.duanliangActive ? 1 : 0;
     if (this.is(seat, 'zhugeliang')) {
-      // 神算：观看 3 张，获得 2 张，余下置于牌堆底
+      // 神算：观看 3 张，获得 2 张（断粮时 1 张），余下置于牌堆底
+      const keep = 2 - less;
       const top = this.takeTop(3);
-      if (top.length <= 2) {
+      if (top.length <= keep) {
         p.hand.push(...top);
       } else {
         const chosen = this.validSelection(
-          await this.ask(seat, { type: 'selectCards', cards: top, count: 2, reason: 'shensuan' }),
+          await this.ask(seat, { type: 'selectCards', cards: top, count: keep, reason: 'shensuan' }),
           top,
-          2,
+          keep,
         );
         for (const c of top) (chosen.includes(c) ? p.hand : this.drawPile).unshift(c);
-        // 手牌顺序无关；落选的一张已放到牌堆底（数组开头）
+        // 手牌顺序无关；落选的牌已放到牌堆底（数组开头）
       }
-      this.addLog(`${this.who(seat)} 发动【神算】，观看牌堆顶 3 张牌并获得 2 张。`);
+      this.addLog(`${this.who(seat)} 发动【神算】，观看牌堆顶 3 张牌并获得 ${keep} 张。`);
       return;
     }
     if (this.is(seat, 'zhangliao')) {
@@ -396,13 +440,13 @@ export class Game {
         this.xiandeng = true;
         this.zhanLimit += 1;
         this.addLog(`${this.who(seat)} 发动【先登】。`);
-        this.drawCards(p, DRAW_PER_TURN - 1);
+        this.drawCards(p, DRAW_PER_TURN - 1 - less);
         return;
       }
     }
     const extra = this.guoguan(seat) ? 1 : 0; // 过关
     if (extra) this.addLog(`${this.who(seat)} 的【过关】生效。`);
-    this.drawCards(p, DRAW_PER_TURN + extra);
+    this.drawCards(p, DRAW_PER_TURN + extra - less);
   }
 
   /** 校验 selectCards 回答，不合法时取前 count 张 */
@@ -537,7 +581,7 @@ export class Game {
       }
       switch (card.key) {
         case 'zhan': {
-          if (this.zhanUsed >= this.zhanLimit) break;
+          if (this.zhanUsed >= this.zhanLimit || this.zhanBlocked(seat)) break;
           const targets = this.zhanTargets(seat);
           if (targets.length === 0) break;
           const opt: PlayOption = { cardId: card.id, targets };
@@ -570,9 +614,24 @@ export class Game {
         case 'biwu':
           if (others.length > 0) options.push({ cardId: card.id, targets: others.map((t) => t.seat) });
           break;
+        case 'duanliang':
+        case 'junling': {
+          // 同名延时锦囊不能重复放入；断粮限距离 1
+          const targets = others
+            .filter((t) => !t.judge.some((j) => j.card.key === card.key))
+            .filter((t) => card.key !== 'duanliang' || this.distance(seat, t.seat) <= 1)
+            .map((t) => t.seat);
+          if (targets.length > 0) options.push({ cardId: card.id, targets });
+          break;
+        }
       }
     }
     return options;
+  }
+
+  /** 军令：判定生效的回合内不能使用【斩】（打出不受影响） */
+  zhanBlocked(seat: number): boolean {
+    return this.junlingActive && seat === this.current;
   }
 
   legalSkills(seat: number): SkillOption[] {
@@ -596,7 +655,7 @@ export class Game {
       if (targets.length > 0) res.push({ skill: 'huoxin', cardCount: 0, targets, secondTargets: second });
     }
     // 宝刀：装备牌当【斩】，无视距离，计入次数
-    if (this.is(seat, 'huangzhong') && this.zhanUsed < this.zhanLimit && p.hand.some(isEquip) && others.length > 0) {
+    if (this.is(seat, 'huangzhong') && this.zhanUsed < this.zhanLimit && !this.zhanBlocked(seat) && p.hand.some(isEquip) && others.length > 0) {
       res.push({ skill: 'baodao', cardCount: 1, targets: others });
     }
     if (this.is(seat, 'lusu') && !this.skillUsed.has('lianmeng') && p.hand.length >= 1 && others.length > 0) {
@@ -650,14 +709,18 @@ export class Game {
       return;
     }
 
-    this.discard([card]);
     const user = p.seat;
-    // 神算：每回合第一次使用锦囊时摸一张牌
-    if (def.kind === 'trick' && this.is(user, 'zhugeliang') && !this.shensuanDrawn) {
-      this.shensuanDrawn = true;
-      this.addLog(`${this.who(user)} 的【神算】生效，摸一张牌。`);
-      this.drawCards(p, 1);
+    if (def.delayed) {
+      // 延时锦囊：置于目标判定区，使用时不能被【识破】（判定前才询问）
+      const t = target!;
+      this.players[t].judge.push({ card, from: user });
+      this.markHostile(user, t, HOSTILE_WEIGHT.delay);
+      this.addLog(`${this.who(user)} 对 ${this.who(t)} 使用了 ${cardText(card)}，置于其判定区。`, { type: 'use', from: user, to: [t], cards: [card] });
+      this.shensuanDraw(p);
+      return;
     }
+    this.discard([card]);
+    if (def.kind === 'trick') this.shensuanDraw(p);
     switch (card.key) {
       case 'zhan': {
         this.zhanUsed++;
@@ -741,6 +804,14 @@ export class Game {
       default:
         throw new Error(`不能主动使用的卡牌: ${card.key}`);
     }
+  }
+
+  /** 神算：每回合第一次使用锦囊时摸一张牌 */
+  private shensuanDraw(p: Player): void {
+    if (!this.is(p.seat, 'zhugeliang') || this.shensuanDrawn) return;
+    this.shensuanDrawn = true;
+    this.addLog(`${this.who(p.seat)} 的【神算】生效，摸一张牌。`);
+    this.drawCards(p, 1);
   }
 
   /** 发动主动技能；参数不合法时什么也不做 */
@@ -1154,6 +1225,7 @@ export class Game {
     this.addLog(`${this.who(seat)} 阵亡，身份是【${ROLE_NAME[t.role]}】。`, { type: 'death', seat });
     this.discard(t.hand.splice(0));
     this.discard(this.takeAllEquips(t));
+    this.discard(t.judge.splice(0).map((j) => j.card));
 
     const winner = this.checkVictory();
     if (winner) throw new GameOver(winner);
@@ -1255,6 +1327,7 @@ export class Game {
         alive: p.alive,
         handCount: p.hand.length,
         equips: { ...p.equips },
+        judge: p.judge.map((j) => ({ ...j })),
         hand: p.seat === seat ? [...p.hand] : null,
       })),
     };
@@ -1263,7 +1336,7 @@ export class Game {
   /** 所有牌的总数（用于校验牌不会凭空增减） */
   totalCards(): number {
     let n = this.drawPile.length + this.discardPile.length;
-    for (const p of this.players) n += p.hand.length + Object.values(p.equips).filter(Boolean).length;
+    for (const p of this.players) n += p.hand.length + Object.values(p.equips).filter(Boolean).length + p.judge.length;
     return n;
   }
 }

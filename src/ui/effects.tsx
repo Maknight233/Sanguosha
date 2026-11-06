@@ -126,6 +126,8 @@ export interface PlayedCard {
   to: number[];
   discard: boolean;
   skill?: string;
+  /** 附加说明（如判定结果） */
+  note?: string;
 }
 
 /**
@@ -145,6 +147,10 @@ export function recentPlays(log: LogEntry[]): PlayedCard[] {
   const out: PlayedCard[] = [];
   for (let i = begin; i < log.length; i++) {
     const ev = log[i].event;
+    if (ev?.type === 'judge') {
+      out.push({ key: `${i}-j`, card: ev.result, from: ev.seat, to: [], discard: false, note: ev.effective ? '判定·生效' : '判定·未生效' });
+      continue;
+    }
     if (ev?.type !== 'use' && ev?.type !== 'discard') continue;
     const to = ev.type === 'use' ? ev.to : [];
     const skill = ev.type === 'use' ? ev.skill : undefined;
@@ -167,6 +173,7 @@ export function PlayZone({ game, shortName }: { game: Game; shortName: (seat: nu
             {p.to.length > 0 && ` → ${p.to.map(shortName).join('、')}`}
             {p.discard && '（弃）'}
             {p.skill && `【${p.skill}】`}
+            {p.note && <span className={p.note.endsWith('未生效') ? 'muted' : 'red'}> {p.note}</span>}
           </div>
         </div>
       ))}

@@ -62,7 +62,9 @@ export function describeRequest(view: GameView, req: Request): string {
           const trick = cardDef(r.trick).name;
           return r.countering
             ? `有人用【识破】抵消了【${trick}】，是否再用【识破】抵消它？`
-            : `${name(view, r.user)} 对 ${name(view, r.target)} 使用了【${trick}】，是否打出【识破】？`;
+            : cardDef(r.trick).delayed
+              ? `${name(view, r.target)} 判定区的【${trick}】（${name(view, r.user)} 使用）即将判定，是否打出【识破】？`
+              : `${name(view, r.user)} 对 ${name(view, r.target)} 使用了【${trick}】，是否打出【识破】？`;
         }
         case 'xiwen':
           return `${name(view, r.source)} 使用了【檄文】，是否弃置一张基础牌？不弃将受到 1 点伤害`;

@@ -14,6 +14,12 @@ export interface Card {
   rank: number; // 1-13
 }
 
+/** 判定区中的延时锦囊；from 为使用者 */
+export interface JudgeCard {
+  card: Card;
+  from: number;
+}
+
 export interface Player {
   seat: number;
   name: string;
@@ -23,6 +29,8 @@ export interface Player {
   maxHp: number;
   hand: Card[];
   equips: Partial<Record<EquipSlot, Card>>;
+  /** 判定区，按放入顺序 */
+  judge: JudgeCard[];
   alive: boolean;
 }
 
@@ -38,6 +46,8 @@ export interface PlayerPublic {
   alive: boolean;
   handCount: number;
   equips: Partial<Record<EquipSlot, Card>>;
+  /** 判定区（公开） */
+  judge: JudgeCard[];
   /** 仅自己可见 */
   hand: Card[] | null;
 }
@@ -152,6 +162,8 @@ export type LogEvent =
   | { type: 'damage'; seat: number; amount: number; from: number | null }
   | { type: 'recover'; seat: number; amount: number }
   | { type: 'dying'; seat: number }
+  /** 判定：seat 的判定区中 trick 判定，结果为 result；effective 为是否生效 */
+  | { type: 'judge'; seat: number; trick: Card; result: Card; effective: boolean }
   | { type: 'death'; seat: number };
 
 export interface LogEntry {

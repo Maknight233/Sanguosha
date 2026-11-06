@@ -72,7 +72,7 @@ export const SUSPICION_TUNING = {
 /** 连锁推理的迭代轮数 */
 const LEAN_ITERATIONS = 8;
 
-const HARMFUL_TRICKS = new Set(['jieying', 'cefan', 'xiwen', 'biwu']);
+const HARMFUL_TRICKS = new Set(['jieying', 'cefan', 'xiwen', 'biwu', 'duanliang', 'junling']);
 const EQUIP_STEAL_ORDER = ['armor', 'weapon', 'horsePlus', 'horseMinus'] as const;
 
 export class BasicAI implements Controller {
@@ -446,6 +446,15 @@ class Brain {
         if (t !== undefined) return use(o, t);
       }
     }
+    // 延时锦囊：军令给手牌多（多半有【斩】）、威胁大的敌人；断粮给体力高、手牌少的敌人
+    for (const o of byKey('junling')) {
+      const t = this.mostBy(o.targets.filter(this.isEnemy), (s) => this.threat(s));
+      if (t !== undefined) return use(o, t);
+    }
+    for (const o of byKey('duanliang')) {
+      const t = this.mostBy(o.targets.filter(this.isEnemy), (s) => this.view.players[s].hp - this.view.players[s].handCount / 2);
+      if (t !== undefined) return use(o, t);
+    }
     const xw = byKey('xiwen')[0];
     if (xw) {
       const others = this.aliveOthers();
@@ -512,6 +521,20 @@ class Brain {
       case 'fencheng':
         return this.fenchengWorth() ? { type: 'skill', skill: s.skill, cards: [], targets: [] } : null;
     }
+  }
+
+  /** 分数最高的座位（反贼仍优先针对主公） */
+  private mostBy(seats: number[], score: (s: number) => number): number | undefined {
+    if (this.me.role === 'rebel' && seats.includes(this.lord.seat)) return this.lord.seat;
+    return [...seats].sort((a, b) => score(b) - score(a))[0];
+  }
+
+  /** 进攻威胁（只用公开信息）：手牌数 + 武器射程 + 多【斩】类武将 */
+  private threat(seat: number): number {
+    const p = this.view.players[seat];
+    const w = p.equips.weapon;
+    const multi = ['zhaoyun', 'zhangliao', 'huangzhong', 'lvbu'].includes(p.general) ? 1.5 : 0;
+    return p.handCount + (w ? (cardDef(w.key).range ?? 1) - 1 : 0) + multi;
   }
 
   /** 是否在攻击范围内（只看武器与坐骑，公开信息） */

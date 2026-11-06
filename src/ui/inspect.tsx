@@ -62,6 +62,20 @@ export function GeneralPanel({ p, isMe, paused, onClose }: { p: PlayerPublic; is
             );
           })
         )}
+        {p.judge.length > 0 && (
+          <>
+            <h4>判定区</h4>
+            {p.judge.map((j) => (
+              <div key={j.card.id} className="inspect-equip">
+                <CardView card={j.card} small />
+                <div>
+                  <b>【{cardDef(j.card.key).name}】</b>
+                  <div>{cardDef(j.card.key).description}</div>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
         {isMe && <p className="muted">这是你自己的武将。</p>}
       </div>
     </Modal>

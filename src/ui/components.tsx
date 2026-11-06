@@ -104,6 +104,20 @@ export function Equips({ equips }: { equips: PlayerPublic['equips'] }) {
   );
 }
 
+/** 判定区：延时锦囊（带悬浮说明） */
+export function JudgeZone({ judge }: { judge: PlayerPublic['judge'] }) {
+  if (judge.length === 0) return null;
+  return (
+    <div className="judge-zone">
+      {judge.map((j) => (
+        <span key={j.card.id} className="judge-tag" {...tipProps(() => <CardTip card={j.card} />)}>
+          判定：{cardDef(j.card.key).name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 interface SeatProps {
   p: PlayerPublic;
   isCurrent: boolean;
@@ -150,6 +164,7 @@ export function SeatView({ p, isCurrent, selectable, selected, distance, inRange
         )}
       </div>
       <Equips equips={p.equips} />
+      <JudgeZone judge={p.judge} />
       {g && (
         <div className="seat-skills">
           {g.skills.map((s) => (

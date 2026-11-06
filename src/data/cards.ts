@@ -8,6 +8,8 @@ export interface CardDef {
   /** 武器攻击范围 */
   range?: number;
   description: string;
+  /** 延时锦囊：使用后置于目标判定区，目标准备阶段判定 */
+  delayed?: boolean;
   /** 预留卡面图片路径 */
   image?: string;
 }
@@ -25,6 +27,8 @@ const defs: CardDef[] = [
   { key: 'xiwen', name: '檄文', kind: 'trick', description: '出牌阶段对所有其他角色使用，每名目标需弃置一张基础牌，否则受到你造成的 1 点伤害。' },
   { key: 'biwu', name: '比武', kind: 'trick', description: '出牌阶段对一名其他角色使用，由目标开始双方轮流弃置一张【斩】，先不弃置的一方受到对方造成的 1 点伤害。' },
   { key: 'xiuzheng', name: '休整', kind: 'trick', description: '出牌阶段对所有角色使用，每名角色依次选择回复 1 点体力或摸一张牌。' },
+  { key: 'duanliang', name: '断粮', kind: 'trick', delayed: true, description: '延时锦囊。出牌阶段对距离 1 以内的一名其他角色使用，置于其判定区。其准备阶段判定：若结果不为 ♣，其本回合摸牌阶段少摸 1 张牌。' },
+  { key: 'junling', name: '军令', kind: 'trick', delayed: true, description: '延时锦囊。出牌阶段对一名其他角色使用，置于其判定区。其准备阶段判定：若结果为黑色（♠♣），其本回合不能使用【斩】。' },
   { key: 'shipo', name: '识破', kind: 'trick', description: '在锦囊牌对一名目标生效前打出，抵消其对该目标的效果；也可以抵消另一张【识破】。' },
 
   // 武器
@@ -52,7 +56,7 @@ export function cardDef(key: string): CardDef {
   return d;
 }
 
-/** 牌堆构成，共 80 张 */
+/** 牌堆构成，共 84 张 */
 export const DECK_SPEC: Array<{ key: string; count: number }> = [
   { key: 'zhan', count: 31 },
   { key: 'bi', count: 12 },
@@ -64,6 +68,8 @@ export const DECK_SPEC: Array<{ key: string; count: number }> = [
   { key: 'biwu', count: 3 },
   { key: 'xiuzheng', count: 1 },
   { key: 'shipo', count: 4 },
+  { key: 'duanliang', count: 2 },
+  { key: 'junling', count: 2 },
   { key: 'huanshoudao', count: 1 },
   { key: 'tiejiqiang', count: 1 },
   { key: 'bintieji', count: 1 },

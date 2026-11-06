@@ -4,7 +4,7 @@ import { cardDef, isRed } from '../data/cards';
 import { generalDef } from '../data/generals';
 import { Game, ROLE_NAME, WINNER_NAME } from '../engine/game';
 import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOption, Winner } from '../engine/types';
-import { CardView, Equips, GeneralCard, Hp, InfoButton, Modal, SeatView } from './components';
+import { CardView, Equips, GeneralCard, Hp, InfoButton, JudgeZone, Modal, SeatView } from './components';
 import { HumanController, PacedController, PauseGate } from './controllers';
 import { filterLog, GeneralPanel, LOG_FILTERS, type LogFilter } from './inspect';
 import { SkillTip, tipProps, TooltipHost } from './tooltip';
@@ -395,6 +395,7 @@ function PlayerArea({
         </div>
         {g && <Hp hp={Math.max(me.hp, 0)} maxHp={me.maxHp} />}
         <Equips equips={me.equips} />
+        <JudgeZone judge={me.judge} />
         {g && (
           <div className="seat-skills">
             {g.skills.map((s) => (
