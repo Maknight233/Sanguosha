@@ -1,3 +1,4 @@
+import { BasicAI } from '../src/ai/basic';
 import { describe, expect, it } from 'vitest';
 import { buildDeck, DECK_SPEC } from '../src/data/cards';
 import { generalDef } from '../src/data/generals';
@@ -237,7 +238,34 @@ describe('弃牌阶段', () => {
   });
 });
 
+/** 场上所有牌的 id（牌堆、弃牌堆、正在判定的牌、手牌、装备、判定区） */
+function allCardIds(game: Game): number[] {
+  const ids = [...game.drawPile, ...game.discardPile].map((c) => c.id);
+  if (game.pendingJudge) ids.push(game.pendingJudge.id);
+  for (const p of game.players) ids.push(...p.hand.map((c) => c.id), ...Object.values(p.equips).map((c) => c!.id), ...p.judge.map((j) => j.card.id));
+  return ids;
+}
+
 describe('随机对局压力测试', () => {
+  it('第四批武将同场：任何时刻每张牌只出现在一处', async () => {
+    const total = buildDeck().length;
+    for (let seed = 1; seed <= 60; seed++) {
+      const game = new Game({
+        controllers: [0, 1, 2, 3, 4].map(() => new BasicAI()),
+        seed,
+        generals: ['xunyu', 'weiyan', 'lvmeng', 'yuji', seed % 2 ? 'zhugeliang' : 'caocao'],
+        maxTurns: 2000,
+      });
+      game.subscribe(() => {
+        if (game.phase === 'setup') return;
+        const ids = allCardIds(game);
+        expect(ids).toHaveLength(total);
+        expect(new Set(ids).size).toBe(total);
+      });
+      await game.start();
+    }
+  }, 60000);
+
   it('300 局随机对局都能正常结束，牌数守恒', async () => {
     const tally = { lord: 0, rebel: 0, renegade: 0 };
     for (let seed = 1; seed <= 300; seed++) {
@@ -248,7 +276,9 @@ describe('随机对局压力测试', () => {
       });
       const total = buildDeck().length;
       game.subscribe(() => {
-        if (game.phase !== 'setup') expect(game.totalCards()).toBe(total);
+        if (game.phase === 'setup') return;
+        expect(game.totalCards()).toBe(total);
+        expect(new Set(allCardIds(game)).size).toBe(total);
       });
       const winner = await game.start();
       tally[winner]++;

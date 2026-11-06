@@ -225,3 +225,18 @@ button[data-key]::after { content: attr(data-key); margin-left: 6px; padding: 0 
 .level-pick { margin-top: 24px; text-align: center; }
 .level-pick button { margin: 0 4px; }
 .level-note { margin-top: 6px; font-size: 13px; }
+
+/* 新手提示与规则速查 */
+.tip-bubble { position: absolute; left: 50%; bottom: 230px; transform: translateX(-50%); z-index: 20; width: min(520px, 80%); background: #fffbe8; color: var(--ink); border: 2px solid #c9a227; border-radius: 10px; padding: 10px 14px; box-shadow: 0 6px 18px rgba(0,0,0,.35); font-size: 14px; line-height: 1.6; }
+.tip-bubble::after { content: ''; position: absolute; left: 50%; bottom: -10px; transform: translateX(-50%); border: 10px solid transparent; border-bottom: 0; border-top-color: #c9a227; }
+.tip-actions { display: flex; gap: 8px; margin-top: 6px; justify-content: flex-end; }
+.tip-actions button { padding: 2px 10px; font-size: 13px; }
+.help-btn { margin-left: auto; font-weight: bold; padding: 6px 12px; }
+.help { width: min(760px, 85vw); }
+.help-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.help-tabs button { padding: 3px 10px; font-size: 13px; }
+.help-body { max-height: 55vh; overflow: auto; font-size: 14px; line-height: 1.7; }
+.help-body table { width: 100%; }
+.help-general { border-bottom: 1px dashed var(--border); padding: 6px 0; }
+.help-general .faction-tag, .help-general .role-badge { margin-left: 6px; }
+.help-footer { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 13px; }

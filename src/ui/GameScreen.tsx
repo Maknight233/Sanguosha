@@ -10,6 +10,8 @@ import { RECORD_VERSION, RecordingController, type Answer, type GameRecord } fro
 import { saveGame } from './storage';
 import { filterLog, GeneralPanel, LOG_FILTERS, type LogFilter } from './inspect';
 import { SkillTip, tipProps, TooltipHost } from './tooltip';
+import { HelpPanel } from './help';
+import { loadTips, markSeen, pickTip, setTipsOff, tipText, type TipDef } from './tips';
 import { describeRequest, skillName } from './describe';
 import { dyingSeats, EffectsLayer, PlayZone } from './effects';
 import { autoPickForRespond, autoTargetsForOption, autoTargetsForSkill, indexKey, SKILL_KEYS, useHotkeys, type KeyAction } from './hotkeys';
@@ -96,13 +98,22 @@ export function GameScreen({ onExit, onReplay, level = 'normal', aiDelay, seed }
   const [, rerender] = useReducer((x: number) => x + 1, 0);
   const tableRef = useRef<HTMLDivElement>(null);
   const [inspect, setInspect] = useState<number | null>(null);
-  // 详情面板打开时：Esc 关闭面板，其他快捷键不生效
+  const [help, setHelp] = useState(false);
+  const panelOpen = inspect !== null || help;
+  // 面板（武将详情 / 规则速查）打开时：Esc 关闭面板，其他快捷键不生效；没有面板时 F1 / ? 打开速查
   useHotkeys((a) => {
-    if (a.type !== 'cancel') return a.type === 'confirm' || a.type === 'nextTarget';
+    if (!panelOpen) {
+      if (a.type !== 'help' || !session) return false;
+      if (session.pauseOnInspect) session.gate.pause();
+      setHelp(true);
+      return true;
+    }
+    if (a.type !== 'cancel') return a.type === 'confirm' || a.type === 'nextTarget' || a.type === 'help';
     session?.gate.resume();
     setInspect(null);
+    setHelp(false);
     return true;
-  }, inspect !== null);
+  });
 
   useEffect(() => {
     const s = createSession(() => speedRef.current, level, seed === undefined ? undefined : seed + round);
@@ -110,6 +121,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', aiDelay, seed }
     setWinner(null);
     setRecord(null);
     setInspect(null);
+    setHelp(false);
     const unsubs = [s.game.subscribe(rerender), s.human.subscribe(rerender)];
     // 只保存正常打完的局（中途重新开始/返回菜单的不保存）
     s.game.start().then((w) => {
@@ -135,6 +147,14 @@ export function GameScreen({ onExit, onReplay, level = 'normal', aiDelay, seed }
   const closeInspect = () => {
     gate.resume();
     setInspect(null);
+  };
+  const openHelp = () => {
+    if (pauseOnInspect) gate.pause();
+    setHelp(true);
+  };
+  const closeHelp = () => {
+    gate.resume();
+    setHelp(false);
   };
   const view = game.view(HUMAN);
   const pending = human.pending;
@@ -186,22 +206,27 @@ export function GameScreen({ onExit, onReplay, level = 'normal', aiDelay, seed }
             key={pending ? JSON.stringify(pending.req) + game.log.length : 'idle'}
             view={view}
             human={human}
-            keysEnabled={inspect === null && !winner}
+            keysEnabled={!panelOpen && !winner}
             onInfo={() => openInspect(HUMAN)}
           />
         </div>
         <EffectsLayer key={round} log={game.log} container={tableRef} />
+        {!winner && !panelOpen && <TipLayer key={`tip-${round}`} view={view} req={pending?.req ?? null} />}
       </div>
       <aside className="side">
         <div className="side-buttons">
           <button onClick={() => setRound((r) => r + 1)}>重新开始</button>
           <button onClick={onExit}>返回菜单</button>
+          <button className="help-btn" onClick={openHelp} title="规则速查 (F1)" aria-label="规则速查">
+            ?
+          </button>
         </div>
         <LogPanel game={game} />
       </aside>
       {inspect !== null && (
         <GeneralPanel p={view.players[inspect]} isMe={inspect === HUMAN} paused={pauseOnInspect && !winner} onClose={closeInspect} />
       )}
+      {help && <HelpPanel players={view.players} me={HUMAN} paused={pauseOnInspect && !winner} onClose={closeHelp} />}
       <TooltipHost />
       {winner && (
         <GameOver
@@ -296,6 +321,41 @@ function SeatSlot({
       onClick={() => clickSeat(pending, sel, seat)}
       onInfo={onInfo}
     />
+  );
+}
+
+// ───────────── 新手提示 ─────────────
+
+/** 情境提示气泡：一条显示到点「知道了」为止，下一条再出现 */
+function TipLayer({ view, req }: { view: GameView; req: Request | null }) {
+  const sel = useSelection();
+  const [current, setCurrent] = useState<TipDef | null>(null);
+  const next = current ? null : pickTip({ view, req, option: sel.option, skill: sel.skill }, loadTips());
+  useEffect(() => {
+    if (!next) return;
+    markSeen(next.id);
+    setCurrent(next);
+  }, [next]);
+  const tip = current ?? next;
+  if (!tip) return null;
+  return (
+    <div className="tip-bubble" role="note">
+      <b>💡 {tip.title}</b>
+      <div>{tipText(tip, view)}</div>
+      <div className="tip-actions">
+        <button className="primary" onClick={() => setCurrent(null)}>
+          知道了
+        </button>
+        <button
+          onClick={() => {
+            setTipsOff(true);
+            setCurrent(null);
+          }}
+        >
+          不再显示提示
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -422,6 +482,8 @@ function PlayerArea({
         if (s) toggleSkill(s);
         return !!s;
       }
+      case 'help':
+        return false;
       case 'nextTarget': {
         if (req.type !== 'play') return false;
         const first = sel.option?.targets ?? sel.skill?.targets ?? [];

@@ -1,6 +1,7 @@
 import { CARD_DEFS, DECK_SPEC } from '../data/cards';
 import { GENERAL_KEYS } from '../data/generals';
 import { GeneralCard } from './components';
+import { RULE_TOPICS } from './help';
 
 const KIND_ORDER = ['basic', 'trick', 'equip'] as const;
 const KIND_TITLE = { basic: '基础牌', trick: '锦囊牌', equip: '装备牌' };
@@ -12,45 +13,12 @@ export function RulesPage({ onBack }: { onBack: () => void }) {
       <button onClick={onBack}>← 返回</button>
       <h1>规则说明</h1>
 
-      <h2>身份与胜负</h2>
-      <p>5 名玩家：主公 1、忠臣 1、反贼 2、内奸 1。只有主公身份公开，主公体力上限 +1；其他人阵亡时才亮出身份。</p>
-      <ul>
-        <li><b>主公与忠臣</b>：消灭所有反贼和内奸。</li>
-        <li><b>反贼</b>：击杀主公。</li>
-        <li><b>内奸</b>：成为最后唯一存活的角色（主公最后死于与内奸的单挑）。</li>
-      </ul>
-      <p>奖惩：击杀反贼者摸 3 张牌；主公误杀忠臣，弃置所有手牌和装备。</p>
-
-      <h2>回合流程</h2>
-      <p>从主公开始按座位轮流。每回合：<b>摸牌</b>（2 张）→ <b>出牌</b>（可使用任意张牌，【斩】限 1 次）→ <b>弃牌</b>（手牌数不能超过当前体力）。</p>
-
-      <h2>距离与攻击范围</h2>
-      <p>
-        距离是沿座位圈两个方向中较近的人数（阵亡者不计）。进攻马让你到别人的距离 -1，防御马让别人到你的距离 +1，最小为 1。
-        攻击范围默认为 1，由武器决定；只有距离不超过攻击范围的角色才能成为【斩】的目标。
-      </p>
-
-      <h2>濒死</h2>
-      <p>体力降到 0 时进入濒死，从当前回合角色开始依次询问是否使用【药】救援；体力回到 1 以上即脱离，否则阵亡。</p>
-
-      <h2>判定与延时锦囊</h2>
-      <p>
-        延时锦囊（【断粮】【军令】）使用后置于目标的判定区，同名的最多一张。目标的准备阶段按放入顺序逐张判定：判定前任何角色都可以打出【识破】抵消它（直接弃置）；
-        否则翻开牌堆顶一张牌作为判定牌，按花色决定是否生效。判定后两张牌都进入弃牌堆。角色阵亡时判定区的牌一并弃置。
-      </p>
-
-      <h2>操作与快捷键</h2>
-      <p>点手牌 → 点目标 → 「确定」。只有一个合法目标时会自动选中；被要求出牌时如果只有一张能出的牌，也会预先选中，按空格即可打出。</p>
-      <table>
-        <tbody>
-          <tr><td className="nowrap">空格 / Enter</td><td>确定</td></tr>
-          <tr><td className="nowrap">Esc</td><td>取消当前选择；没有选择时为「不出」；也用于关闭武将详情</td></tr>
-          <tr><td className="nowrap">1–9、0</td><td>选第 1–10 张手牌（再按一次取消）；弹窗中选第 N 项</td></tr>
-          <tr><td className="nowrap">E</td><td>结束出牌</td></tr>
-          <tr><td className="nowrap">Q、W</td><td>发动第 1、2 个技能</td></tr>
-          <tr><td className="nowrap">Tab</td><td>在可选目标之间切换</td></tr>
-        </tbody>
-      </table>
+      {RULE_TOPICS.map((t) => (
+        <section key={t.id}>
+          <h2>{t.title}</h2>
+          {t.body}
+        </section>
+      ))}
 
       <h2>卡牌（共 {DECK_SPEC.reduce((n, d) => n + d.count, 0)} 张）</h2>
       {KIND_ORDER.map((kind) => (

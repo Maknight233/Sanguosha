@@ -432,6 +432,8 @@ export class Game {
       });
       const card = ans === 'no' ? null : this.takeFromHand(x, Number(ans));
       if (!card) continue;
+      // 先换掉「正在判定的牌」再弃置原判定牌，避免同一张牌短暂同时出现在两处
+      this.pendingJudge = card;
       this.discard([result]);
       this.addLog(`${this.who(s)} 发动【定策】，打出 ${cardText(card)} 代替了判定牌 ${cardText(result)}。`, {
         type: 'use',
@@ -441,7 +443,6 @@ export class Game {
         skill: '定策',
       });
       result = card;
-      this.pendingJudge = card;
       this.drawCards(x, 1);
     }
     return result;

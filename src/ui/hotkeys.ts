@@ -42,7 +42,8 @@ export type KeyAction =
   | { type: 'index'; index: number }
   | { type: 'end' }
   | { type: 'skill'; index: number }
-  | { type: 'nextTarget' };
+  | { type: 'nextTarget' }
+  | { type: 'help' };
 
 /** 把按键翻译成动作；与输入框、修饰键组合或长按重复的按键一律忽略 */
 export function keyAction(e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'repeat'>): KeyAction | null {
@@ -52,6 +53,7 @@ export function keyAction(e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' |
   if (key === 'escape') return { type: 'cancel' };
   if (key === 'e') return { type: 'end' };
   if (key === 'tab') return { type: 'nextTarget' };
+  if (key === 'f1' || key === '?') return { type: 'help' };
   const skill = SKILL_KEYS.indexOf(key);
   if (skill >= 0) return { type: 'skill', index: skill };
   const index = keyIndex(key);
