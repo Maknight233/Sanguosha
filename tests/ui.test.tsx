@@ -3,6 +3,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest';
 import { App } from '../src/ui/App';
 import { GameScreen } from '../src/ui/GameScreen';
+import { replay } from '../src/engine/record';
+import { loadRecords } from '../src/ui/storage';
 
 afterEach(cleanup);
 
@@ -125,6 +127,12 @@ describe('界面', () => {
       }
       expect(result).toBe('over');
       finished++;
+      // 打完的局自动保存，并能完整重现（包括玩家通过界面做的选择）
+      const rec = loadRecords()[0];
+      expect(rec.seed).toBe(seed);
+      const r = await replay(rec);
+      expect(r.error).toBeNull();
+      expect(r.log.at(-1)!.text).toContain('游戏结束');
       // 结算界面展示所有身份
       expect(screen.getByText(/获胜，共 \d+ 回合/)).toBeTruthy();
     }

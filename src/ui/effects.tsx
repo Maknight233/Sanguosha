@@ -1,5 +1,4 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import type { Game } from '../engine/game';
 import type { Card, LogEntry } from '../engine/types';
 import { CardView } from './components';
 
@@ -49,26 +48,28 @@ function measureSeats(container: HTMLElement): Map<number, Rect> {
 }
 
 /** 叠在牌桌上的特效层：出牌指向线、受伤/回复闪光与飘字 */
-export function EffectsLayer({ game, container }: { game: Game; container: RefObject<HTMLElement | null> }) {
+/** maxBatch：一次最多为多少条新日志生成特效（回放中大步跳转时避免满屏特效） */
+export function EffectsLayer({ log, container, maxBatch }: { log: LogEntry[]; container: RefObject<HTMLElement | null>; maxBatch?: number }) {
   const [effects, setEffects] = useState<Effect[]>([]);
   const [rects, setRects] = useState<Map<number, Rect>>(new Map());
-  const seen = useRef(game.log.length);
+  const seen = useRef(log.length);
   const idRef = useRef(0);
-  const n = game.log.length;
+  const n = log.length;
 
   useLayoutEffect(() => {
     if (n <= seen.current) {
       seen.current = n;
       return;
     }
-    const fresh = toEffects(game.log.slice(seen.current), () => ++idRef.current);
+    const from = maxBatch === undefined ? seen.current : Math.max(seen.current, n - maxBatch);
+    const fresh = toEffects(log.slice(from, n), () => ++idRef.current);
     seen.current = n;
     if (fresh.length === 0) return;
     if (container.current) setRects(measureSeats(container.current));
     setEffects((list) => [...list, ...fresh]);
     const ids = new Set(fresh.map((f) => f.id));
     setTimeout(() => setEffects((list) => list.filter((f) => !ids.has(f.id))), EFFECT_MS);
-  }, [n, game, container]);
+  }, [n, log, container, maxBatch]);
 
   if (effects.length === 0) return null;
   const center = (s: number) => {
@@ -160,8 +161,8 @@ export function recentPlays(log: LogEntry[]): PlayedCard[] {
 }
 
 /** 牌桌中央的出牌区 */
-export function PlayZone({ game, shortName }: { game: Game; shortName: (seat: number) => string }) {
-  const plays = recentPlays(game.log);
+export function PlayZone({ log, shortName }: { log: LogEntry[]; shortName: (seat: number) => string }) {
+  const plays = recentPlays(log);
   return (
     <div className="play-zone">
       {plays.length === 0 && <span className="play-zone-empty">出牌区</span>}
@@ -182,6 +183,6 @@ export function PlayZone({ game, shortName }: { game: Game; shortName: (seat: nu
 }
 
 /** 当前处于濒死的角色（体力 ≤ 0 但还活着） */
-export function dyingSeats(game: Game): number[] {
-  return game.players.filter((p) => p.alive && p.hp <= 0).map((p) => p.seat);
+export function dyingSeats(players: ReadonlyArray<{ seat: number; alive: boolean; hp: number }>): number[] {
+  return players.filter((p) => p.alive && p.hp <= 0).map((p) => p.seat);
 }

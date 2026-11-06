@@ -6,6 +6,8 @@ import { Game, ROLE_NAME, WINNER_NAME } from '../engine/game';
 import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOption, Winner } from '../engine/types';
 import { CardView, Equips, GeneralCard, Hp, InfoButton, JudgeZone, Modal, SeatView } from './components';
 import { HumanController, PacedController, PauseGate } from './controllers';
+import { RECORD_VERSION, RecordingController, type Answer, type GameRecord } from '../engine/record';
+import { saveGame } from './storage';
 import { filterLog, GeneralPanel, LOG_FILTERS, type LogFilter } from './inspect';
 import { SkillTip, tipProps, TooltipHost } from './tooltip';
 import { describeRequest, skillName } from './describe';
@@ -33,27 +35,57 @@ interface Session {
   gate: PauseGate;
   /** 查看武将详情时是否暂停：单机对 AI 时开启；以后联网与真人对局时应关闭 */
   pauseOnInspect: boolean;
+  seed: number;
+  /** 所有人的回答，按顺序（用于保存回放） */
+  answers: Answer[];
 }
 
 function createSession(delay: () => number, seed?: number): Session {
   const human = new HumanController();
   const gate = new PauseGate();
   const ais = [1, 2, 3, 4].map(() => new PacedController(new BasicAI(), delay, gate));
-  const game = new Game({ controllers: [human, ...ais], names: NAMES, seed: seed ?? Math.floor(Math.random() * 1e9) });
-  return { game, human, ais, gate, pauseOnInspect: true };
+  const answers: Answer[] = [];
+  const s = seed ?? Math.floor(Math.random() * 1e9);
+  const controllers = [human, ...ais].map((c, seat) => new RecordingController(c, seat, answers));
+  const game = new Game({ controllers, names: NAMES, seed: s });
+  return { game, human, ais, gate, pauseOnInspect: true, seed: s, answers };
+}
+
+/** 对局结束后生成记录 */
+function makeRecord(s: Session, winner: Winner): GameRecord {
+  const me = s.game.players[HUMAN];
+  const team = (r: string) => (r === 'loyalist' ? 'lord' : r);
+  return {
+    version: RECORD_VERSION,
+    id: `${Date.now()}-${s.seed}`,
+    date: Date.now(),
+    seed: s.seed,
+    names: NAMES,
+    human: HUMAN,
+    answers: s.answers,
+    winner,
+    turns: s.game.turn,
+    role: me.role,
+    general: me.general,
+    won: team(me.role) === winner,
+    logLength: s.game.log.length,
+  };
 }
 
 interface GameScreenProps {
   onExit: () => void;
+  /** 查看刚结束这一局的回放 */
+  onReplay?: (rec: GameRecord) => void;
   /** 测试用：固定 AI 停顿与随机种子 */
   aiDelay?: number;
   seed?: number;
 }
 
-export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
+export function GameScreen({ onExit, onReplay, aiDelay, seed }: GameScreenProps) {
   const [round, setRound] = useState(0);
   const [session, setSession] = useState<Session | null>(null);
   const [winner, setWinner] = useState<Winner | null>(null);
+  const [record, setRecord] = useState<GameRecord | null>(null);
   const [speed, setSpeed] = useState(aiDelay ?? 600);
   const speedRef = useRef(speed);
   speedRef.current = speed;
@@ -72,9 +104,17 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
     const s = createSession(() => speedRef.current, seed === undefined ? undefined : seed + round);
     setSession(s);
     setWinner(null);
+    setRecord(null);
     setInspect(null);
     const unsubs = [s.game.subscribe(rerender), s.human.subscribe(rerender)];
-    s.game.start().then(setWinner, (e) => console.error(e));
+    // 只保存正常打完的局（中途重新开始/返回菜单的不保存）
+    s.game.start().then((w) => {
+      if (s.human.cancelled) return;
+      const rec = makeRecord(s, w);
+      saveGame(rec);
+      setRecord(rec);
+      setWinner(w);
+    }, (e) => console.error(e));
     return () => {
       unsubs.forEach((u) => u());
       s.human.cancelled = true;
@@ -94,7 +134,7 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
   };
   const view = game.view(HUMAN);
   const pending = human.pending;
-  const dying = dyingSeats(game);
+  const dying = dyingSeats(game.players);
   const shortName = (s: number) => {
     const p = view.players[s];
     if (s === HUMAN) return '你';
@@ -113,7 +153,7 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
         )}
         <div className="area-center">
           <div className="center-info">
-            <div>第 {view.turn} 回合 · {view.turn > 0 ? `${view.players[view.current].name} 的${PHASE_NAME[view.phase]}` : '选将'}</div>
+            <div>第 {view.turn} 回合 · {view.phase === 'over' ? '游戏结束' : view.turn > 0 ? `${view.players[view.current].name} 的${PHASE_NAME[view.phase]}` : '选将'}</div>
             <div className="muted">牌堆 {view.drawPileCount} 张 · 弃牌堆 {view.discardPileCount} 张</div>
           </div>
           {dying.map((s) => (
@@ -121,7 +161,7 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
               {shortName(s)} 濒死，求【药】！
             </div>
           ))}
-          <PlayZone game={game} shortName={shortName} />
+          <PlayZone log={game.log} shortName={shortName} />
           <div className="speed">
             AI 速度：
             {[
@@ -144,7 +184,7 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
             onInfo={() => openInspect(HUMAN)}
           />
         </div>
-        <EffectsLayer key={round} game={game} container={tableRef} />
+        <EffectsLayer key={round} log={game.log} container={tableRef} />
       </div>
       <aside className="side">
         <div className="side-buttons">
@@ -157,7 +197,15 @@ export function GameScreen({ onExit, aiDelay, seed }: GameScreenProps) {
         <GeneralPanel p={view.players[inspect]} isMe={inspect === HUMAN} paused={pauseOnInspect && !winner} onClose={closeInspect} />
       )}
       <TooltipHost />
-      {winner && <GameOver game={game} winner={winner} onAgain={() => setRound((r) => r + 1)} onExit={onExit} />}
+      {winner && (
+        <GameOver
+          game={game}
+          winner={winner}
+          onAgain={() => setRound((r) => r + 1)}
+          onExit={onExit}
+          onReplay={onReplay && record ? () => onReplay(record) : undefined}
+        />
+      )}
     </div>
   );
 }
@@ -634,7 +682,19 @@ function LogPanel({ game }: { game: Game }) {
   );
 }
 
-function GameOver({ game, winner, onAgain, onExit }: { game: Game; winner: Winner; onAgain: () => void; onExit: () => void }) {
+function GameOver({
+  game,
+  winner,
+  onAgain,
+  onExit,
+  onReplay,
+}: {
+  game: Game;
+  winner: Winner;
+  onAgain: () => void;
+  onExit: () => void;
+  onReplay?: () => void;
+}) {
   const me = game.players[HUMAN];
   const team = (r: string) => (r === 'loyalist' ? 'lord' : r);
   const won = team(me.role) === winner;
@@ -667,6 +727,7 @@ function GameOver({ game, winner, onAgain, onExit }: { game: Game; winner: Winne
         <button className="primary" onClick={onAgain}>
           再来一局
         </button>
+        {onReplay && <button onClick={onReplay}>查看回放</button>}
         <button onClick={onExit}>返回菜单</button>
       </div>
     </Modal>
