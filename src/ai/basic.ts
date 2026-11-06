@@ -63,6 +63,12 @@ export const FENCHENG_MIN_SCORE = 2;
 
 /** 身份倾向分超过此值才认定敌友（+1 确定忠，−1 确定反） */
 export const LEAN_THRESHOLD = 0.4;
+/** 内奸嫌疑分参数（模拟脚本可修改来对比） */
+export const SUSPICION_TUNING = {
+  enabled: true,
+  /** 嫌疑分达到此值才认定为疑似内奸（1.0 约等于两边各一次完整的行为） */
+  threshold: 1.0,
+};
 /** 连锁推理的迭代轮数 */
 const LEAN_ITERATIONS = 8;
 
@@ -73,6 +79,12 @@ export class BasicAI implements Controller {
   async decide<R extends Request>(view: GameView, req: R): Promise<Response<R>> {
     return new Brain(view).decide(req) as Response<R>;
   }
+}
+
+/** 诊断 / 测试用：从 view 视角看 seat 的倾向分与内奸嫌疑分 */
+export function inferOf(view: GameView, seat: number): { lean: number; suspicion: number; suspected: boolean } {
+  const b = new Brain(view);
+  return { lean: b.lean(seat), suspicion: b.suspicion(seat), suspected: b.suspectedRenegade(seat) };
 }
 
 /** 针对单次决策的分析器 */
@@ -178,6 +190,31 @@ class Brain {
   private looksLoyal = (seat: number) => this.lean(seat) > LEAN_THRESHOLD;
   private looksRebel = (seat: number) => this.lean(seat) < -LEAN_THRESHOLD;
 
+  /**
+   * 内奸嫌疑分：把某人的行为分成「帮主公方」（帮偏忠的人、打偏反的人）和「帮反贼方」（帮偏反的人、打偏忠的人），
+   * 取两者中较小的一方的累计量——只有两边都做过才会升高。
+   * 只对身份未知的人计算；身份排除已确定内奸不在未知者中时为 0。
+   */
+  suspicion(seat: number): number {
+    const p = this.view.players[seat];
+    if (p.role !== null || seat === this.me.seat || !this.unknownRoles().has('renegade')) return 0;
+    let proLord = 0;
+    let proRebel = 0;
+    for (let t = 0; t < this.view.players.length; t++) {
+      if (t === seat) continue;
+      const l = this.lean(t);
+      const help = this.view.help[seat]?.[t] ?? 0;
+      const hit = this.view.hostility[seat]?.[t] ?? 0;
+      proLord += help * Math.max(l, 0) + hit * Math.max(-l, 0);
+      proRebel += help * Math.max(-l, 0) + hit * Math.max(l, 0);
+    }
+    return Math.min(proLord, proRebel);
+  }
+
+  suspectedRenegade(seat: number): boolean {
+    return SUSPICION_TUNING.enabled && this.suspicion(seat) >= SUSPICION_TUNING.threshold;
+  }
+
   relation(seat: number): Relation {
     if (seat === this.me.seat) return 'friend';
     const known = this.view.players[seat].role;
@@ -205,16 +242,17 @@ class Brain {
     const attacksMe = this.hostile(seat, me);
 
     switch (this.me.role) {
+      // 疑似内奸：不当队友（不救、不给牌、不替他挡锦囊），但原本是敌人的仍是敌人
       case 'lord':
       case 'loyalist':
         if (seat === lord) return 'friend';
         if (this.looksRebel(seat)) return 'enemy';
-        if (this.looksLoyal(seat)) return 'friend';
+        if (this.looksLoyal(seat)) return this.suspectedRenegade(seat) ? 'neutral' : 'friend';
         return attacksMe ? 'enemy' : 'neutral';
       case 'rebel':
         if (seat === lord) return 'enemy';
         if (this.looksLoyal(seat)) return 'enemy';
-        if (this.looksRebel(seat)) return 'friend';
+        if (this.looksRebel(seat)) return this.suspectedRenegade(seat) ? 'neutral' : 'friend';
         return attacksMe ? 'enemy' : 'neutral';
       case 'renegade': {
         const mode = this.renegadeMode();

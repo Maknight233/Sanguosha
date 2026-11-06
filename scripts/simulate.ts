@@ -1,8 +1,9 @@
 /** 用法：npx vite-node scripts/simulate.ts [局数]  —— 统计 5 个基础 AI 对战的胜率与回合数 */
-import { BasicAI } from '../src/ai/basic';
+import { SUSPICION_TUNING, BasicAI } from '../src/ai/basic';
 import { Game, WINNER_NAME } from '../src/engine/game';
 import type { Winner } from '../src/engine/types';
 
+Object.assign(SUSPICION_TUNING, JSON.parse(process.env.SUSPICION ?? '{}'));
 const N = Number(process.argv[2] ?? 500);
 const wins: Record<Winner, number> = { lord: 0, rebel: 0, renegade: 0 };
 const turns: number[] = [];
