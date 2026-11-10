@@ -82,7 +82,7 @@ export interface PlayOption {
 
 /** 出牌阶段可发动的主动技能 */
 export interface SkillOption {
-  skill: 'kuanren' | 'huoji' | 'huoxin' | 'baodao' | 'lianmeng' | 'fencheng' | 'qixi' | 'dujiang';
+  skill: 'kuanren' | 'huoji' | 'huoxin' | 'baodao' | 'lianmeng' | 'fencheng' | 'qixi' | 'dujiang' | 'duoxie';
   /** 需要弃置/使用的手牌张数 */
   cardCount: number;
   /** 第一目标候选；空数组表示无需指定目标（如焚城） */
@@ -128,8 +128,8 @@ export interface ChoiceOption {
 export type Request =
   | { type: 'chooseGeneral'; options: string[] }
   | { type: 'play'; options: PlayOption[]; skills: SkillOption[] }
-  /** allowPair：可用两张同颜色手牌代替（铁脊长枪） */
-  | { type: 'respond'; accept: string[]; reason: RespondReason; allowPair?: boolean }
+  /** allowPair：可用两张同颜色手牌代替（铁脊长枪）；equipDodge：可当【避】打出的装备区的牌（太史慈【死战】），回答其 id */
+  | { type: 'respond'; accept: string[]; reason: RespondReason; allowPair?: boolean; equipDodge?: Card[] }
   | { type: 'discard'; count: number }
   /** 从目标区域选一张牌：手牌随机抽取，装备可指定 */
   | { type: 'chooseCard'; target: number; handCount: number; equips: Card[]; reason: 'jieying' | 'cefan' | 'liuxing' }
@@ -138,7 +138,7 @@ export type Request =
   /** judge：定策 / 卜筮时为当前判定 */
   | { type: 'choose'; options: ChoiceOption[]; reason: ChooseReason; target?: number; amount?: number; judge?: JudgeInfo }
   /** 从给定牌中选出 count 张 */
-  | { type: 'selectCards'; cards: Card[]; count: number; reason: 'mousuan' | 'shensuan' | 'xiaoyong' | 'huoxin' }
+  | { type: 'selectCards'; cards: Card[]; count: number; reason: 'mousuan' | 'shensuan' | 'xiaoyong' | 'huoxin' | 'duoxie' }
   /** 将牌排序放回牌堆顶，返回的第一张在最上面 */
   | { type: 'orderCards'; cards: Card[]; reason: 'mousuan' };
 

@@ -5,6 +5,7 @@ import type {
   Card,
   CardPick,
   Controller,
+  EquipSlot,
   GameView,
   LogEntry,
   LogEvent,
@@ -74,6 +75,14 @@ export const HELP_WEIGHT = {
 
 /** 典韦【舍身】摸牌数 */
 export const SHESHEN_DRAW = 2;
+/** 曹仁【坚城】：摸牌数 = 装备区牌数 − 此值 */
+export const JIANCHENG_FREE = 1;
+/** 张飞【夺械】：被夺者摸牌数 */
+export const DUOXIE_DRAW = 1;
+/** 太史慈【死战】：发动后摸牌数 */
+export const SIZHAN_DRAW = 1;
+/** 公孙瓒【白马】：使用装备牌时摸牌数 */
+export const BAIMA_DRAW = 1;
 
 /** 郭嘉【谋算】观看的牌数 */
 export const MOUSUAN_VIEW = 4;
@@ -363,6 +372,12 @@ export class Game {
       this.addLog(`${this.who(seat)} 发动【坐断】。`);
       this.drawCards(p, 1);
     }
+    // 坚城
+    const jiancheng = equipCount(p) - JIANCHENG_FREE;
+    if (this.is(seat, 'caoren') && jiancheng > 0) {
+      this.addLog(`${this.who(seat)} 发动【坚城】。`);
+      this.drawCards(p, jiancheng);
+    }
     // 韬晦
     if (this.is(seat, 'simayi') && !this.dealtDamageThisTurn) {
       this.addLog(`${this.who(seat)} 发动【韬晦】。`);
@@ -626,7 +641,9 @@ export class Game {
   attackRange(seat: number): number {
     const weapon = this.players[seat].equips.weapon;
     const base = weapon ? cardDef(weapon.key).range ?? 1 : 1;
-    return base + (this.is(seat, 'lvbu') ? 1 : 0); // 骁勇
+    const p = this.players[seat];
+    const baima = this.is(seat, 'gongsunzan') && !!(p.equips.horseMinus || p.equips.horsePlus);
+    return base + (this.is(seat, 'lvbu') ? 1 : 0) + (baima ? 1 : 0); // 骁勇、白马
   }
 
   inAttackRange(from: number, to: number): boolean {
@@ -794,6 +811,10 @@ export class Game {
       const targets = others.filter((t) => !this.players[t].judge.some((j) => (j.as ?? j.card.key) === 'duanliang'));
       if (targets.length > 0) res.push({ skill: 'dujiang', cardCount: 1, targets });
     }
+    if (this.is(seat, 'zhangfei') && !this.skillUsed.has('duoxie')) {
+      const targets = others.filter((t) => this.distance(seat, t) <= 1 && equipCount(this.players[t]) > 0);
+      if (targets.length > 0) res.push({ skill: 'duoxie', cardCount: 0, targets });
+    }
     if (this.is(seat, 'dongzhuo') && !this.fenchengUsed.has(seat) && others.length > 0) {
       res.push({ skill: 'fencheng', cardCount: 0, targets: [] });
     }
@@ -839,6 +860,10 @@ export class Game {
       if (old) this.discard([old]);
       p.equips[slot] = card;
       this.addLog(`${this.who(p.seat)} 装备了 ${cardText(card)}。`, { type: 'use', from: p.seat, to: [], cards: [card] });
+      if (this.is(p.seat, 'gongsunzan')) {
+        this.addLog(`${this.who(p.seat)} 发动【白马】。`);
+        this.drawCards(p, BAIMA_DRAW);
+      }
       return;
     }
 
@@ -1047,6 +1072,25 @@ export class Game {
         await this.resolveZhan(seat, target);
         break;
       }
+      case 'duoxie': {
+        this.skillUsed.add('duoxie');
+        const t = this.players[target];
+        const equips = Object.values(t.equips).filter((c): c is Card => !!c);
+        const [pick] = this.validSelection(await this.ask(seat, { type: 'selectCards', cards: equips, count: 1, reason: 'duoxie' }), equips, 1);
+        const slot = (Object.keys(t.equips) as EquipSlot[]).find((k) => t.equips[k] === pick)!;
+        delete t.equips[slot];
+        p.hand.push(pick);
+        this.addLog(`${this.who(seat)} 发动【夺械】，获得了 ${this.who(target)} 的 ${cardText(pick)}，${this.who(target)} 摸一张牌。`, {
+          type: 'use',
+          from: seat,
+          to: [target],
+          cards: [],
+          skill: '夺械',
+        });
+        this.markHostile(seat, target, HOSTILE_WEIGHT.steal);
+        this.drawCards(t, DUOXIE_DRAW);
+        break;
+      }
       case 'lianmeng': {
         this.skillUsed.add('lianmeng');
         const card = this.takeFromHand(p, cards[0]!.id)!;
@@ -1191,7 +1235,7 @@ export class Game {
   async askDodge(target: number, source: number): Promise<boolean> {
     const dodge = await this.askForCard(target, ['bi'], { kind: 'dodge', source }, this.weaponKey(target) === 'tiejiqiang');
     if (dodge) {
-      const how = dodge.length === 2 ? `将 ${dodge.map(cardText).join('、')} 当作【避】打出` : `打出 ${cardText(dodge[0])}`;
+      const how = dodge.length === 2 || dodge[0].key !== 'bi' ? `将 ${dodge.map(cardText).join('、')} 当作【避】打出` : `打出 ${cardText(dodge[0])}`;
       this.addLog(`${this.who(target)} ${how}，抵消了【斩】。`, { type: 'use', from: target, to: [], cards: dodge });
       // 持重
       if (this.is(target, 'luxun') && target !== this.current) {
@@ -1291,9 +1335,26 @@ export class Game {
       accept = [...new Set([...accept, ...p.hand.filter(isEquip).map((c) => c.key)])];
     }
     const pairOk = allowPair && hasSameColorPair(p.hand);
-    if (!p.hand.some((c) => accept.includes(c.key)) && !pairOk) return null;
-    const ans = await this.ask(seat, { type: 'respond', accept, reason, ...(pairOk ? { allowPair: true } : {}) });
+    // 死战：装备区的牌可当【避】打出
+    const equipDodge = accept.length === 1 && accept[0] === 'bi' && this.is(seat, 'taishici') ? Object.values(p.equips).filter((c): c is Card => !!c) : [];
+    if (!p.hand.some((c) => accept.includes(c.key)) && !pairOk && equipDodge.length === 0) return null;
+    const ans = await this.ask(seat, {
+      type: 'respond',
+      accept,
+      reason,
+      ...(pairOk ? { allowPair: true } : {}),
+      ...(equipDodge.length > 0 ? { equipDodge } : {}),
+    });
     if (ans === null) return null;
+    const fromEquip = typeof ans === 'number' ? equipDodge.find((c) => c.id === ans) : undefined;
+    if (fromEquip) {
+      const slot = (Object.keys(p.equips) as EquipSlot[]).find((k) => p.equips[k] === fromEquip)!;
+      delete p.equips[slot];
+      this.discard([fromEquip]);
+      this.addLog(`${this.who(seat)} 发动【死战】。`);
+      this.drawCards(p, SIZHAN_DRAW);
+      return [fromEquip];
+    }
     let cards: Card[];
     if (Array.isArray(ans)) {
       if (!pairOk || ans[0] === ans[1]) return null;
@@ -1574,4 +1635,8 @@ function hasSameSuitPair(hand: Card[]): boolean {
     seen.add(c.suit);
   }
   return false;
+}
+
+function equipCount(p: Player): number {
+  return Object.values(p.equips).filter(Boolean).length;
 }

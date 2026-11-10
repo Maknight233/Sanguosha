@@ -124,6 +124,23 @@ const defs: GeneralDef[] = [
     key: 'yuji', name: '于吉', faction: 'qun', hp: 4,
     skills: [{ name: '卜筮', description: '每轮限一次（你的回合开始时重置），其他角色的判定牌生效后，你可以获得之。' }],
   },
+  // 第五批：装备（2026-11-10）
+  {
+    key: 'caoren', name: '曹仁', faction: 'wei', hp: 4,
+    skills: [{ name: '坚城', description: '结束阶段，你摸 X 张牌（X 为你装备区的牌数 − 1）。' }],
+  },
+  {
+    key: 'zhangfei', name: '张飞', faction: 'shu', hp: 4,
+    skills: [{ name: '夺械', description: '出牌阶段限一次，你可以获得距离 1 以内一名其他角色装备区的一张牌，然后该角色摸一张牌。' }],
+  },
+  {
+    key: 'taishici', name: '太史慈', faction: 'wu', hp: 4,
+    skills: [{ name: '死战', description: '你可以将装备区的一张牌当【避】打出，然后摸一张牌。' }],
+  },
+  {
+    key: 'gongsunzan', name: '公孙瓒', faction: 'qun', hp: 4,
+    skills: [{ name: '白马', description: '你使用装备牌时，摸一张牌；你的装备区有坐骑时，攻击范围 +1。' }],
+  },
 ];
 
 export const GENERALS: Record<string, GeneralDef> = Object.fromEntries(defs.map((g) => [g.key, g]));

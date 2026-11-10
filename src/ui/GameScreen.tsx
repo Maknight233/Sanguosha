@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AI_LEVEL_NAME, BasicAI, type AiLevel } from '../ai/basic';
-import { cardDef, isRed } from '../data/cards';
+import { cardDef, cardText, isRed } from '../data/cards';
 import { generalDef } from '../data/generals';
 import { Game, ROLE_NAME, WINNER_NAME } from '../engine/game';
 import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOption, Winner } from '../engine/types';
@@ -564,6 +564,12 @@ function PlayerArea({
               结束出牌
             </button>
           )}
+          {req?.type === 'respond' &&
+            req.equipDodge?.map((c) => (
+              <button key={c.id} onClick={() => answer(c.id)}>
+                【死战】{cardText(c)} 当【避】
+              </button>
+            ))}
           {req?.type === 'respond' && (
             <button onClick={() => answer(null)} data-key="Esc">
               不出

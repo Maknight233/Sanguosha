@@ -27,8 +27,8 @@ type Relation = 'friend' | 'enemy' | 'neutral';
 /** 选将偏好：越靠前越优先 */
 const GENERAL_PREFERENCE = [
   'zhugeliang', 'guojia', 'caocao', 'liubei', 'zhaoyun', 'sunquan', 'ganning', 'lvbu', 'zhangliao', 'lusu',
-  'weiyan', 'xunyu', 'zhouyu', 'dongzhuo', 'huatuo', 'lvmeng', 'yuji', 'luxun', 'huangzhong', 'zhangjiao',
-  'guanyu', 'dianwei', 'simayi', 'diaochan',
+  'weiyan', 'zhangfei', 'xunyu', 'zhouyu', 'gongsunzan', 'dongzhuo', 'huatuo', 'lvmeng', 'yuji', 'luxun', 'taishici',
+  'huangzhong', 'caoren', 'zhangjiao', 'guanyu', 'dianwei', 'simayi', 'diaochan',
 ];
 /** 选将扰动幅度：偏好表中相差不到这么多名的武将可能互换顺序 */
 const PICK_JITTER = 8;
@@ -122,7 +122,7 @@ class Brain {
       case 'play':
         return this.play(req.options, req.skills);
       case 'respond':
-        return this.respond(req.accept, req.reason, !!req.allowPair);
+        return this.respond(req.accept, req.reason, !!req.allowPair, req.equipDodge ?? []);
       case 'discard':
         return this.cheapest(this.hand, req.count).map((c) => c.id);
       case 'chooseCard':
@@ -134,7 +134,7 @@ class Brain {
         return this.choose(req.reason, req.options);
       case 'selectCards':
         if (req.reason === 'huoxin') return this.cheapest(req.cards, req.count).map((c) => c.id);
-        if (req.reason === 'xiaoyong') return [this.bestEquipToRemove(req.cards).id];
+        if (req.reason === 'xiaoyong' || req.reason === 'duoxie') return [this.bestEquipToRemove(req.cards).id];
         return this.best(req.cards, req.count).map((c) => c.id);
       case 'orderCards':
         return this.best(req.cards, req.cards.length).map((c) => c.id);
@@ -542,6 +542,16 @@ class Brain {
         const card = this.cheapest(this.hand, 1)[0];
         return { type: 'skill', skill: s.skill, cards: [card.id], targets: [t] };
       }
+      case 'duoxie': {
+        // 抢距离 1 以内敌人的装备（对方摸一张，相当于用 1 张手牌换走 1 件装备）
+        const order: string[] = [...EQUIP_STEAL_ORDER];
+        const rank = (t: number) => {
+          const slots = Object.keys(this.view.players[t].equips).map((k) => order.indexOf(k)).filter((i) => i >= 0);
+          return slots.length ? -Math.min(...slots) : -99;
+        };
+        const t = this.mostBy(s.targets.filter(this.isEnemy), rank);
+        return t === undefined ? null : { type: 'skill', skill: s.skill, cards: [], targets: [t] };
+      }
       case 'fencheng':
         return this.fenchengWorth() ? { type: 'skill', skill: s.skill, cards: [], targets: [] } : null;
       case 'qixi':
@@ -679,13 +689,23 @@ class Brain {
 
   // ───────────── 响应 ─────────────
 
-  private respond(accept: string[], reason: RespondReason, allowPair: boolean): number | [number, number] | null {
+  private respond(accept: string[], reason: RespondReason, allowPair: boolean, equipDodge: Card[] = []): number | [number, number] | null {
     const usable = this.cheapest(this.hand.filter((c) => accept.includes(c.key)), this.hand.length);
     const first = usable[0]?.id ?? null;
 
     switch (reason.kind) {
       case 'dodge': {
+        // 死战：手里有同类备用装备时，先用装备区的那件（换上备用的），留着【避】
+        if (equipDodge.length > 0) {
+          const spare = equipDodge.find((e) => this.hand.some((c) => cardDef(c.key).kind === 'equip' && cardDef(c.key).slot === cardDef(e.key).slot));
+          if (spare) return spare.id;
+        }
         if (first !== null) return first;
+        // 死战：没有【避】时用装备区最不重要的牌（与拆装备的优先顺序相反）
+        if (equipDodge.length > 0) {
+          const order: string[] = [...EQUIP_STEAL_ORDER];
+          return [...equipDodge].sort((a, b) => order.indexOf(cardDef(b.key).slot!) - order.indexOf(cardDef(a.key).slot!))[0].id;
+        }
         if (!allowPair) return null;
         const red = this.cheapest(this.hand.filter(isRed), 2);
         const black = this.cheapest(this.hand.filter((c) => !isRed(c)), 2);

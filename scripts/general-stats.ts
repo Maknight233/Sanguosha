@@ -40,7 +40,8 @@ async function runShard(index: number, total: number): Promise<Raw> {
     let w: Winner;
     try {
       w = await game.start();
-    } catch {
+    } catch (e) {
+      if (process.env.SHOWERR) console.error('seed', seed, String(e));
       continue;
     }
     for (const p of game.players) {

@@ -14,7 +14,7 @@ function name(view: GameView, seat: number): string {
   return p.general ? `${p.name}（${generalDef(p.general).name}）` : p.name;
 }
 
-const SKILL_NAME: Record<string, string> = { kuanren: '宽仁', huoji: '火计', huoxin: '惑心', baodao: '宝刀', lianmeng: '联盟', fencheng: '焚城', qixi: '奇袭', dujiang: '渡江' };
+const SKILL_NAME: Record<string, string> = { kuanren: '宽仁', huoji: '火计', huoxin: '惑心', baodao: '宝刀', lianmeng: '联盟', fencheng: '焚城', qixi: '奇袭', dujiang: '渡江', duoxie: '夺械' };
 export function skillName(key: string): string {
   return SKILL_NAME[key] ?? key;
 }
@@ -52,13 +52,16 @@ export function describeRequest(view: GameView, req: Request): string {
           return '【骁勇】：选择要弃置的装备';
         case 'huoxin':
           return '【惑心】：选择一张手牌交给貂蝉';
+        case 'duoxie':
+          return '【夺械】：选择要获得的装备';
       }
       break;
     case 'orderCards':
       return '【谋算】：依次点击，决定放回牌堆顶的顺序（先点的在最上面）';
     case 'respond': {
       const r = req.reason;
-      const pair = req.allowPair ? '（可用【铁脊长枪】将两张同颜色手牌当【避】）' : '';
+      const pair =
+        (req.allowPair ? '（可用【铁脊长枪】将两张同颜色手牌当【避】）' : '') + (req.equipDodge?.length ? '（可发动【死战】将装备区的牌当【避】）' : '');
       switch (r.kind) {
         case 'dodge':
           return `${name(view, r.source)} 对你使用了【斩】，是否打出【避】？${pair}`;
