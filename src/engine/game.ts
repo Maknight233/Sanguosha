@@ -75,6 +75,17 @@ export const HELP_WEIGHT = {
 /** 典韦【舍身】摸牌数 */
 export const SHESHEN_DRAW = 2;
 
+/** 郭嘉【谋算】观看的牌数 */
+export const MOUSUAN_VIEW = 4;
+
+/** 平衡测试用的开关（scripts/general-stats.ts 的 SKILL 环境变量） */
+export const SKILL_TUNING = {
+  /** 谋算观看的牌数 */
+  mousuanView: MOUSUAN_VIEW,
+  /** 武将体力覆盖，如 {"yuji":3} */
+  hp: {} as Record<string, number>,
+};
+
 /** 对目标有害的锦囊 */
 export const HARMFUL_TRICK_KEYS = new Set(['jieying', 'cefan', 'xiwen', 'biwu', 'duanliang', 'junling', 'tianlei']);
 
@@ -158,8 +169,8 @@ export class Game {
   junlingActive = false;
   /** 正在判定、尚未结算的判定牌（计入牌数守恒） */
   pendingJudge: Card | null = null;
-  /** 于吉【卜筮】上次发动的回合 */
-  bushiTurn = -1;
+  /** 于吉【卜筮】本轮已发动（于吉自己的回合开始时重置） */
+  bushiRoundUsed = false;
   private listeners: Array<() => void> = [];
 
   constructor(private readonly opts: GameOptions) {
@@ -259,7 +270,7 @@ export class Game {
     await this.chooseGenerals(lordSeat);
 
     for (const p of this.players) {
-      p.maxHp = generalDef(p.general).hp + (p.role === 'lord' ? 1 : 0);
+      p.maxHp = (SKILL_TUNING.hp[p.general] ?? generalDef(p.general).hp) + (p.role === 'lord' ? 1 : 0);
       p.hp = p.maxHp;
     }
 
@@ -327,6 +338,7 @@ export class Game {
     this.dealtDamageThisTurn = false;
     this.duanliangActive = false;
     this.junlingActive = false;
+    if (this.is(seat, 'yuji')) this.bushiRoundUsed = false;
     this.addLog(`—— 第 ${this.turn} 回合：${this.who(seat)} ——`, { type: 'turn', seat });
 
     this.phase = 'prepare';
@@ -491,11 +503,11 @@ export class Game {
     return result;
   }
 
-  /** 判定牌生效后：于吉【卜筮】可以获得它（其他角色的判定，每回合限一次），否则进入弃牌堆 */
+  /** 判定牌生效后：于吉【卜筮】可以获得它（其他角色的判定，每轮限一次），否则进入弃牌堆 */
   async finishJudge(seat: number, result: Card): Promise<void> {
     this.pendingJudge = null;
     for (const s of this.aliveFrom(this.current)) {
-      if (s === seat || !this.is(s, 'yuji') || this.bushiTurn === this.turn) continue;
+      if (s === seat || !this.is(s, 'yuji') || this.bushiRoundUsed) continue;
       const ans = await this.ask(s, {
         type: 'choose',
         reason: 'bushi',
@@ -506,7 +518,7 @@ export class Game {
         ],
       });
       if (ans !== 'yes') continue;
-      this.bushiTurn = this.turn;
+      this.bushiRoundUsed = true;
       this.players[s].hand.push(result);
       this.addLog(`${this.who(s)} 发动【卜筮】，获得了判定牌 ${cardText(result)}。`);
       return;
@@ -1376,7 +1388,7 @@ export class Game {
   }
 
   async mousuan(seat: number): Promise<void> {
-    const top = this.takeTop(3);
+    const top = this.takeTop(SKILL_TUNING.mousuanView);
     if (top.length === 0) return;
     const [got] = this.validSelection(
       await this.ask(seat, { type: 'selectCards', cards: top, count: 1, reason: 'mousuan' }),

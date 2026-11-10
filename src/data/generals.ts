@@ -26,7 +26,7 @@ const defs: GeneralDef[] = [
   },
   {
     key: 'guojia', name: '郭嘉', faction: 'wei', hp: 3,
-    skills: [{ name: '谋算', description: '你受到伤害后，观看牌堆顶 3 张牌，获得其中 1 张，其余以任意顺序放回。' }],
+    skills: [{ name: '谋算', description: '你受到伤害后，观看牌堆顶 4 张牌，获得其中 1 张，其余以任意顺序放回。' }],
   },
   {
     key: 'zhangliao', name: '张辽', faction: 'wei', hp: 4,
@@ -122,7 +122,7 @@ const defs: GeneralDef[] = [
   },
   {
     key: 'yuji', name: '于吉', faction: 'qun', hp: 4,
-    skills: [{ name: '卜筮', description: '每回合限一次，其他角色的判定牌生效后，你可以获得之。' }],
+    skills: [{ name: '卜筮', description: '每轮限一次（你的回合开始时重置），其他角色的判定牌生效后，你可以获得之。' }],
   },
 ];
 

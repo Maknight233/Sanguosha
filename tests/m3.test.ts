@@ -44,18 +44,19 @@ describe('魏', () => {
     expect(game.players[1].hp).toBe(3);
   });
 
-  it('郭嘉【谋算】：受伤后获得 1 张，其余按指定顺序放回', async () => {
+  it('郭嘉【谋算】：受伤后观看 4 张、获得 1 张，其余按指定顺序放回', async () => {
     const { game, ctrls } = await setup(gens({ 1: 'guojia' }));
-    const top = game.drawPile.slice(-3).reverse(); // 第一张为牌堆顶
+    const top = game.drawPile.slice(-4).reverse(); // 第一张为牌堆顶
     ctrls[1].handler = (_v, req) => {
-      if (req.type === 'selectCards') return [top[2].id];
+      if (req.type === 'selectCards') return [top[3].id];
       if (req.type === 'orderCards') return [...req.cards].reverse().map((c) => c.id);
       return undefined;
     };
     await game.damage(null, 1, 1);
-    expect(game.players[1].hand).toEqual([top[2]]);
-    expect(game.drawPile.at(-1)).toBe(top[1]);
-    expect(game.drawPile.at(-2)).toBe(top[0]);
+    expect(game.players[1].hand).toEqual([top[3]]);
+    expect(game.drawPile.at(-1)).toBe(top[2]);
+    expect(game.drawPile.at(-2)).toBe(top[1]);
+    expect(game.drawPile.at(-3)).toBe(top[0]);
   });
 
   it('张辽【先登】：少摸 1 张，本回合距离视为 1', async () => {

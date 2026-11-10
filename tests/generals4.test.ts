@@ -164,7 +164,7 @@ describe('吕蒙【渡江】', () => {
 });
 
 describe('于吉【卜筮】', () => {
-  it('获得其他角色的判定牌（每回合限一次），自己的判定不行', async () => {
+  it('获得其他角色的判定牌（每轮限一次），自己的判定不行', async () => {
     const { game, ctrls } = await setup(gens({ 4: 'yuji', 0: 'weiyan' }));
     ctrls[4].handler = (_v, req) => (req.type === 'choose' && req.reason === 'bushi' ? 'yes' : undefined);
     await placeJunling(game, 1, 0);
@@ -181,6 +181,13 @@ describe('于吉【卜筮】', () => {
     await game.useSkill(game.players[0], opt, [], []);
     expect(game.players[4].hand).not.toContain(top2);
     expect(game.discardPile).toContain(top2);
+    // 下一名其他角色的回合：本轮已发动，仍不能获得
+    await placeJunling(game, 1, 2);
+    game.turn++;
+    game.current = 2;
+    const top3 = stackTop(game, 'heart');
+    await game.judgePhase(game.players[2]);
+    expect(game.players[4].hand).not.toContain(top3);
     // 于吉自己的判定：不询问
     ctrls[4].requests = [];
     game.turn++;
@@ -188,6 +195,19 @@ describe('于吉【卜筮】', () => {
     stackTop(game, 'heart');
     await game.judgePhase(game.players[4]);
     expect(ctrls[4].requests.some((r) => r.type === 'choose' && r.reason === 'bushi')).toBe(false);
+  });
+
+  it('于吉自己的回合开始时重置，之后又可以获得', async () => {
+    const { game, ctrls } = await setup(gens({ 4: 'yuji' }));
+    ctrls[4].handler = (_v, req) => (req.type === 'choose' && req.reason === 'bushi' ? 'yes' : undefined);
+    game.bushiRoundUsed = true;
+    await game.runTurn(4);
+    expect(game.bushiRoundUsed).toBe(false);
+    await placeJunling(game, 1, 0);
+    const top = stackTop(game, 'heart');
+    game.current = 0;
+    await game.judgePhase(game.players[0]);
+    expect(game.players[4].hand).toContain(top);
   });
 
   it('荀彧改判后，于吉获得的是改判后的牌', async () => {
