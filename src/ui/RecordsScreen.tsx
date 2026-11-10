@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { AI_LEVEL_NAME, type AiLevel } from '../ai/basic';
 import { generalDef } from '../data/generals';
-import { ROLE_NAME, WINNER_NAME } from '../engine/game';
+import { PLAYER_COUNTS, ROLE_NAME, WINNER_NAME } from '../engine/game';
 import type { GameRecord } from '../engine/record';
 import type { Role } from '../engine/types';
-import { clearStats, loadRecords, loadStats, MAX_RECORDS, winRate } from './storage';
+import { clearStats, loadRecords, loadStats, MAX_RECORDS, recordPlayers, winRate } from './storage';
 
 const ROLES: Role[] = ['lord', 'loyalist', 'rebel', 'renegade'];
 const LEVELS = Object.keys(AI_LEVEL_NAME) as AiLevel[];
@@ -76,6 +76,24 @@ export function RecordsScreen({ onBack, onReplay }: { onBack: () => void; onRepl
             <table>
               <thead>
                 <tr>
+                  <th>人数</th>
+                  <th>局数</th>
+                  <th>胜率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {PLAYER_COUNTS.map((n) => (
+                  <tr key={n}>
+                    <td>{n} 人</td>
+                    <td>{stats.byPlayers?.[n]?.games ?? 0}</td>
+                    <td>{winRate(stats.byPlayers?.[n])}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <table>
+              <thead>
+                <tr>
                   <th>武将</th>
                   <th>局数</th>
                   <th>胜率</th>
@@ -123,6 +141,7 @@ export function RecordsScreen({ onBack, onReplay }: { onBack: () => void; onRepl
               <th>时间</th>
               <th>你的武将</th>
               <th>身份</th>
+              <th>人数</th>
               <th>难度</th>
               <th>结果</th>
               <th>回合</th>
@@ -135,6 +154,7 @@ export function RecordsScreen({ onBack, onReplay }: { onBack: () => void; onRepl
                 <td>{formatDate(r.date)}</td>
                 <td>{generalDef(r.general).name}</td>
                 <td>{ROLE_NAME[r.role]}</td>
+                <td>{recordPlayers(r)}</td>
                 <td>{levelName(r.level)}</td>
                 <td className={r.won ? 'win' : 'muted'}>
                   {r.won ? '胜' : '负'}（{WINNER_NAME[r.winner]}获胜）

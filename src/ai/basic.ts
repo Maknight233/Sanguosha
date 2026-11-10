@@ -1,5 +1,5 @@
 import { BASIC_KEYS, cardDef, isRed, TIANLEI_DAMAGE, tianleiHit } from '../data/cards';
-import { seatDistance } from '../engine/game';
+import { ROLE_TABLE, seatDistance } from '../engine/game';
 import type {
   Card,
   CardPick,
@@ -153,10 +153,10 @@ class Brain {
 
   /**
    * 身份排除：未知身份的存活角色可能是哪些身份。
-   * 总身份 = 1 主公 + 1 忠臣 + 2 反贼 + 1 内奸，去掉已知身份（自己、主公、阵亡者）后剩下的就是未知者的候选。
+   * 总身份按人数查 ROLE_TABLE（5 人：1 主公 + 1 忠臣 + 2 反贼 + 1 内奸），去掉已知身份（自己、主公、阵亡者）后剩下的就是未知者的候选。
    */
   private unknownRoles(): Set<string> {
-    const pool = ['loyalist', 'rebel', 'rebel', 'renegade'];
+    const pool: string[] = ROLE_TABLE[this.view.players.length].filter((r) => r !== 'lord');
     for (const p of this.view.players) {
       if (p.role === null || p.role === 'lord') continue;
       const i = pool.indexOf(p.role);
@@ -281,6 +281,8 @@ class Brain {
           if (attacksMe) return this.lord.hp > 1 ? 'enemy' : 'neutral';
           return 'friend';
         }
+        // 反贼全灭：内奸必须自己动手，先清掉主公以外的所有人（含另一名内奸）
+        if (this.aliveCounts().rebels === 0) return 'enemy';
         if (mode === 'balance') {
           if (this.likelyRebel(seat)) return 'neutral';
           if (this.likelyLoyal(seat)) return 'enemy';
@@ -304,20 +306,22 @@ class Brain {
   private renegadeMode(): 'wait' | 'lord' | 'rebels' | 'balance' {
     const first = this.view.deathOrder[0];
     if (first === undefined) return 'wait';
-    const { rebels, loyalistAlive } = this.aliveCounts();
+    const { rebels, loyalists, loyalistAlive } = this.aliveCounts();
     // 平衡：最后一个反贼一死，内奸就要面对主公 + 忠臣，所以转打忠臣、保住反贼
     if (RENEGADE_TUNING.balance && rebels === 1 && loyalistAlive && this.lord.hp > RENEGADE_TUNING.balanceLordDangerHp)
       return 'balance';
     if (this.view.players[first].role !== 'rebel') return 'lord';
     // 动态切换：反贼人数不再少于主公方时（如忠臣也阵亡了），转回帮主公
-    const lordSide = 1 + (loyalistAlive ? 1 : 0);
+    const lordSide = 1 + loyalists;
     return rebels >= lordSide || this.lord.hp <= LORD_DANGER_HP ? 'lord' : 'rebels';
   }
 
-  /** 存活的反贼人数、忠臣是否存活（由阵亡者身份推出） */
-  private aliveCounts(): { rebels: number; loyalistAlive: boolean } {
-    const dead = (role: string) => this.view.players.filter((p) => !p.alive && p.role === role).length;
-    return { rebels: 2 - dead('rebel'), loyalistAlive: dead('loyalist') === 0 };
+  /** 存活的反贼、忠臣人数（总数按人数查表，减去阵亡者） */
+  private aliveCounts(): { rebels: number; loyalists: number; loyalistAlive: boolean } {
+    const roles = ROLE_TABLE[this.view.players.length];
+    const left = (role: string) => roles.filter((r) => r === role).length - this.view.players.filter((p) => !p.alive && p.role === role).length;
+    const loyalists = left('loyalist');
+    return { rebels: left('rebel'), loyalists, loyalistAlive: loyalists > 0 };
   }
 
   /** 内奸视角：某人是否（很可能）是反贼 */

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AI_LEVEL_NAME, BasicAI, type AiLevel } from '../ai/basic';
 import { cardDef, cardText, isRed } from '../data/cards';
 import { generalDef } from '../data/generals';
-import { Game, ROLE_NAME, WINNER_NAME } from '../engine/game';
+import { Game, isWinner, ROLE_NAME, WINNER_NAME } from '../engine/game';
 import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOption, Winner } from '../engine/types';
 import { CardView, Equips, GeneralCard, Hp, InfoButton, JudgeZone, Modal, SeatView } from './components';
 import { HumanController, PacedController, PauseGate } from './controllers';
@@ -14,10 +14,10 @@ import { HelpPanel } from './help';
 import { loadTips, markSeen, pickTip, setTipsOff, tipText, type TipDef } from './tips';
 import { describeRequest, skillName } from './describe';
 import { dyingSeats, EffectsLayer, PlayZone } from './effects';
+import { isCrowded, seatNames, tableSides } from './layout';
 import { autoPickForRespond, autoTargetsForOption, autoTargetsForSkill, indexKey, SKILL_KEYS, useHotkeys, type KeyAction } from './hotkeys';
 
 const HUMAN = 0;
-const NAMES = ['你', '电脑一', '电脑二', '电脑三', '电脑四'];
 const PHASE_NAME: Record<string, string> = {
   setup: '选将',
   prepare: '准备阶段',
@@ -27,8 +27,6 @@ const PHASE_NAME: Record<string, string> = {
   end: '结束阶段',
   over: '游戏结束',
 };
-/** 牌桌上的座位位置（从玩家开始逆时针：下、右、右上、左上、左） */
-const SEAT_AREA = ['me', 'right', 'top-right', 'top-left', 'left'];
 
 interface Session {
   game: Game;
@@ -41,36 +39,37 @@ interface Session {
   /** 所有人的回答，按顺序（用于保存回放） */
   answers: Answer[];
   level: AiLevel;
+  names: string[];
 }
 
-function createSession(delay: () => number, level: AiLevel, seed?: number): Session {
+function createSession(delay: () => number, level: AiLevel, players: number, seed?: number): Session {
   const human = new HumanController();
   const gate = new PauseGate();
-  const ais = [1, 2, 3, 4].map(() => new PacedController(new BasicAI(level), delay, gate));
+  const names = seatNames(players);
+  const ais = names.slice(1).map(() => new PacedController(new BasicAI(level), delay, gate));
   const answers: Answer[] = [];
   const s = seed ?? Math.floor(Math.random() * 1e9);
   const controllers = [human, ...ais].map((c, seat) => new RecordingController(c, seat, answers));
-  const game = new Game({ controllers, names: NAMES, seed: s });
-  return { game, human, ais, gate, pauseOnInspect: true, seed: s, answers, level };
+  const game = new Game({ controllers, names, seed: s });
+  return { game, human, ais, gate, pauseOnInspect: true, seed: s, answers, level, names };
 }
 
 /** 对局结束后生成记录 */
 function makeRecord(s: Session, winner: Winner): GameRecord {
   const me = s.game.players[HUMAN];
-  const team = (r: string) => (r === 'loyalist' ? 'lord' : r);
   return {
     version: RECORD_VERSION,
     id: `${Date.now()}-${s.seed}`,
     date: Date.now(),
     seed: s.seed,
-    names: NAMES,
+    names: s.names,
     human: HUMAN,
     answers: s.answers,
     winner,
     turns: s.game.turn,
     role: me.role,
     general: me.general,
-    won: team(me.role) === winner,
+    won: isWinner(me, winner),
     level: s.level,
     logLength: s.game.log.length,
   };
@@ -82,12 +81,14 @@ interface GameScreenProps {
   onReplay?: (rec: GameRecord) => void;
   /** AI 难度 */
   level?: AiLevel;
+  /** 人数（5–8） */
+  players?: number;
   /** 测试用：固定 AI 停顿与随机种子 */
   aiDelay?: number;
   seed?: number;
 }
 
-export function GameScreen({ onExit, onReplay, level = 'normal', aiDelay, seed }: GameScreenProps) {
+export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, aiDelay, seed }: GameScreenProps) {
   const [round, setRound] = useState(0);
   const [session, setSession] = useState<Session | null>(null);
   const [winner, setWinner] = useState<Winner | null>(null);
@@ -116,7 +117,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', aiDelay, seed }
   });
 
   useEffect(() => {
-    const s = createSession(() => speedRef.current, level, seed === undefined ? undefined : seed + round);
+    const s = createSession(() => speedRef.current, level, players, seed === undefined ? undefined : seed + round);
     setSession(s);
     setWinner(null);
     setRecord(null);
@@ -167,14 +168,14 @@ export function GameScreen({ onExit, onReplay, level = 'normal', aiDelay, seed }
 
   return (
     <div className="game-layout">
-      <div className="table" ref={tableRef}>
-        {view.players.map((p) =>
-          p.seat === HUMAN ? null : (
-            <div key={p.seat} className={`area-${SEAT_AREA[p.seat]}`}>
-              <SeatSlot game={game} view={view} seat={p.seat} pending={pending?.req ?? null} onInfo={() => openInspect(p.seat)} />
-            </div>
-          ),
-        )}
+      <div className={`table ${isCrowded(view.players.length) ? 'crowded' : ''}`} ref={tableRef}>
+        {(['right', 'top', 'left'] as const).map((side) => (
+          <div key={side} className={`seat-row seat-row-${side}`}>
+            {tableSides(view.players.length)[side].map((seat) => (
+              <SeatSlot key={seat} game={game} view={view} seat={seat} pending={pending?.req ?? null} onInfo={() => openInspect(seat)} />
+            ))}
+          </div>
+        ))}
         <div className="area-center">
           <div className="center-info">
             <div>第 {view.turn} 回合 · {view.phase === 'over' ? '游戏结束' : view.turn > 0 ? `${view.players[view.current].name} 的${PHASE_NAME[view.phase]}` : '选将'}</div>
@@ -772,8 +773,7 @@ function GameOver({
   onReplay?: () => void;
 }) {
   const me = game.players[HUMAN];
-  const team = (r: string) => (r === 'loyalist' ? 'lord' : r);
-  const won = team(me.role) === winner;
+  const won = isWinner(me, winner);
   return (
     <Modal title={won ? '胜利！' : '失败'}>
       <p>

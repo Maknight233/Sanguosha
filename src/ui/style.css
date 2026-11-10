@@ -38,14 +38,18 @@ th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; v
   display: grid; gap: 10px; padding: 12px;
   grid-template-columns: 1fr 1fr 1fr;
   grid-template-rows: auto 1fr auto;
-  grid-template-areas: "tl . tr" "left center right" "me me me";
+  grid-template-areas: "top top top" "left center right" "me me me";
   background: radial-gradient(ellipse at center, #5b7a52 0%, #3e5a3a 75%);
   overflow: auto;
 }
-.area-top-left { grid-area: tl; justify-self: end; }
-.area-top-right { grid-area: tr; justify-self: start; }
-.area-left { grid-area: left; justify-self: start; align-self: center; }
-.area-right { grid-area: right; justify-self: end; align-self: center; }
+/* 座位从玩家右手边逆时针环绕：右侧从下往上、上方从右往左、左侧从上往下（见 src/ui/layout.ts） */
+.seat-row { display: flex; gap: 10px; }
+.seat-row-top { grid-area: top; flex-direction: row-reverse; justify-content: center; gap: 60px; }
+.seat-row-left { grid-area: left; flex-direction: column; justify-content: center; align-items: flex-start; }
+.seat-row-right { grid-area: right; flex-direction: column-reverse; justify-content: center; align-items: flex-end; }
+.table.crowded .seat-row-top { gap: 24px; }
+.table.crowded .seat { width: 170px; font-size: 12px; }
+.table.crowded .general-portrait.small { height: 36px; font-size: 18px; margin: 2px 0; }
 .area-center { grid-area: center; align-self: center; text-align: center; color: #fff; }
 .area-me { grid-area: me; }
 .center-info { background: rgba(0,0,0,.25); border-radius: 8px; padding: 8px 12px; display: inline-block; }

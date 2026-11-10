@@ -1,17 +1,21 @@
 /**
  * 用法：npx vite-node scripts/general-stats.ts [局数] [并行进程数，默认 1]
  * AI 随机选将，统计每个武将按身份校正后的胜率（该武将胜率 − 同身份平均胜率）。
+ * 人数：环境变量 PLAYERS=5…8（默认 5）。
  * 调参：环境变量 SKILL='{"bushiPerRound":true}' 覆盖 SKILL_TUNING（见 src/engine/game.ts）。
  * 内部：SHARD=i/n 时只跑 seed % n === i 的局，并输出 JSON 原始计数。
  */
 import { spawn } from 'node:child_process';
 import { BasicAI } from '../src/ai/basic';
-import { Game, SKILL_TUNING } from '../src/engine/game';
+import { Game, isWinner, ROLE_TABLE, SKILL_TUNING } from '../src/engine/game';
 import type { Controller, GameView, Request, Response, Role, Winner } from '../src/engine/types';
 import { GENERALS } from '../src/data/generals';
 
 const N = Number(process.argv[2] ?? 2000);
 const JOBS = Number(process.argv[3] ?? 1);
+const PLAYERS = Number(process.env.PLAYERS ?? 5);
+// 临时覆盖身份配置，如 ROLES=lord,loyalist,rebel,rebel,renegade,renegade
+if (process.env.ROLES) ROLE_TABLE[PLAYERS] = process.env.ROLES.split(',') as Role[];
 Object.assign(SKILL_TUNING, JSON.parse(process.env.SKILL ?? '{}'));
 
 /** 原始计数：roles[身份] = [胜, 场]；gens[武将][身份] = [胜, 场] */
@@ -20,7 +24,6 @@ interface Raw {
   gens: Record<string, Record<string, [number, number]>>;
 }
 
-const won = (role: Role, w: Winner) => (w === 'lord' ? role === 'lord' || role === 'loyalist' : w === role);
 
 async function runShard(index: number, total: number): Promise<Raw> {
   let rng = 1;
@@ -36,7 +39,7 @@ async function runShard(index: number, total: number): Promise<Raw> {
   for (let seed = 1; seed <= N; seed++) {
     if (seed % total !== index) continue;
     rng = seed * 7919;
-    const game = new Game({ controllers: [0, 1, 2, 3, 4].map(() => new RandomPick()), seed, maxTurns: 500 });
+    const game = new Game({ controllers: Array.from({ length: PLAYERS }, () => new RandomPick()), seed, maxTurns: 500 });
     let w: Winner;
     try {
       w = await game.start();
@@ -45,7 +48,7 @@ async function runShard(index: number, total: number): Promise<Raw> {
       continue;
     }
     for (const p of game.players) {
-      const ok = won(p.role, w) ? 1 : 0;
+      const ok = isWinner(p, w) ? 1 : 0;
       const r = (raw.roles[p.role] ??= [0, 0]);
       r[0] += ok;
       r[1]++;
@@ -84,7 +87,7 @@ function runChild(index: number): Promise<Raw> {
 function report(raw: Raw): void {
   const avg = (r: string) => raw.roles[r][0] / raw.roles[r][1];
   const games = raw.roles.lord?.[1] ?? 0;
-  console.log(`共 ${games} 局；调参 ${JSON.stringify(SKILL_TUNING)}`);
+  console.log(`${PLAYERS} 人，共 ${games} 局；调参 ${JSON.stringify(SKILL_TUNING)}`);
   console.log('各身份平均胜率', Object.fromEntries(Object.keys(raw.roles).map((r) => [r, (avg(r) * 100).toFixed(1) + '%'])));
   const rows = Object.entries(raw.gens).map(([g, byRole]) => {
     let n = 0;

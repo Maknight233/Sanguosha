@@ -6,9 +6,9 @@ import type { PlayerPublic } from '../engine/types';
 import { CardView, SeatView } from './components';
 import { dyingSeats, EffectsLayer, PlayZone } from './effects';
 import { TooltipHost } from './tooltip';
+import { isCrowded, tableSides } from './layout';
 
 /** 牌桌上的座位位置（与对局界面相同） */
-const SEAT_AREA = ['me', 'right', 'top-right', 'top-left', 'left'];
 const PHASE_NAME: Record<string, string> = {
   setup: '选将',
   prepare: '准备阶段',
@@ -120,10 +120,11 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
 
   return (
     <div className="game-layout replay">
-      <div className="table" ref={tableRef}>
-        {snap.players.map((p) => (
-          <div key={p.seat} className={`area-${SEAT_AREA[p.seat]}`}>
-            <div className="replay-seat">
+      <div className={`table ${isCrowded(snap.players.length) ? 'crowded' : ''}`} ref={tableRef}>
+        {(['me', 'right', 'top', 'left'] as const).map((side) => (
+          <div key={side} className={side === 'me' ? 'area-me' : `seat-row seat-row-${side}`}>
+            {(side === 'me' ? [0] : tableSides(snap.players.length)[side]).map((seat) => snap.players[seat]).map((p) => (
+            <div key={p.seat} className="replay-seat">
               <SeatView
                 p={asPublic(p)}
                 isCurrent={snap.current === p.seat && snap.turn > 0}
@@ -140,6 +141,7 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
                 {p.alive && p.hand.length === 0 && <span className="muted">（无手牌）</span>}
               </div>
             </div>
+            ))}
           </div>
         ))}
         <div className="area-center">

@@ -35,7 +35,27 @@ export const WINNER_NAME: Record<Winner, string> = {
   renegade: '内奸',
 };
 
-export const STANDARD_ROLES: Role[] = ['lord', 'loyalist', 'rebel', 'rebel', 'renegade'];
+/**
+ * 各人数的身份配置：主公方与反贼人数相等时最平衡，所以 6、8 人用 2 名内奸
+ * （两名内奸互为敌人，只有最后存活的那名获胜）。
+ */
+export const ROLE_TABLE: Record<number, Role[]> = {
+  5: ['lord', 'loyalist', 'rebel', 'rebel', 'renegade'],
+  6: ['lord', 'loyalist', 'rebel', 'rebel', 'renegade', 'renegade'],
+  7: ['lord', 'loyalist', 'loyalist', 'rebel', 'rebel', 'rebel', 'renegade'],
+  8: ['lord', 'loyalist', 'loyalist', 'rebel', 'rebel', 'rebel', 'renegade', 'renegade'],
+};
+/** 各人数的主公体力上限加成 */
+export const LORD_BONUS: Record<number, number> = { 5: 1, 6: 1, 7: 0, 8: 0 };
+
+/** 某角色是否属于获胜方（内奸获胜时只有存活的那名内奸算赢） */
+export function isWinner(p: Pick<Player, 'role' | 'alive'>, winner: Winner): boolean {
+  if (winner === 'lord') return p.role === 'lord' || p.role === 'loyalist';
+  if (winner === 'renegade') return p.role === 'renegade' && p.alive;
+  return p.role === winner;
+}
+export const PLAYER_COUNTS = [5, 6, 7, 8];
+export const STANDARD_ROLES: Role[] = ROLE_TABLE[5];
 export const INITIAL_HAND = 4;
 export const DRAW_PER_TURN = 2;
 /** 主公候选武将数 / 其他人候选武将数 */
@@ -91,6 +111,8 @@ export const MOUSUAN_VIEW = 4;
 export const SKILL_TUNING = {
   /** 谋算观看的牌数 */
   mousuanView: MOUSUAN_VIEW,
+  /** 主公体力上限加成（按人数覆盖 LORD_BONUS，如 {"6":2}） */
+  lordBonus: {} as Record<string, number>,
   /** 武将体力覆盖，如 {"yuji":3} */
   hp: {} as Record<string, number>,
 };
@@ -183,8 +205,8 @@ export class Game {
   private listeners: Array<() => void> = [];
 
   constructor(private readonly opts: GameOptions) {
-    if (opts.controllers.length !== STANDARD_ROLES.length) {
-      throw new Error(`需要 ${STANDARD_ROLES.length} 个控制器`);
+    if (!ROLE_TABLE[opts.controllers.length]) {
+      throw new Error(`需要 ${PLAYER_COUNTS.join(' / ')} 个控制器`);
     }
     this.rng = new Rng(opts.seed ?? Date.now());
     this.controllers = opts.controllers;
@@ -258,8 +280,8 @@ export class Game {
   }
 
   async setup(): Promise<void> {
-    const n = STANDARD_ROLES.length;
-    const roles = this.opts.roles ?? this.rng.shuffle([...STANDARD_ROLES]);
+    const n = this.controllers.length;
+    const roles = this.opts.roles ?? this.rng.shuffle([...ROLE_TABLE[n]]);
     this.players = roles.map((role, seat) => ({
       seat,
       name: this.opts.names?.[seat] ?? `${seat + 1}号位`,
@@ -279,7 +301,7 @@ export class Game {
     await this.chooseGenerals(lordSeat);
 
     for (const p of this.players) {
-      p.maxHp = (SKILL_TUNING.hp[p.general] ?? generalDef(p.general).hp) + (p.role === 'lord' ? 1 : 0);
+      p.maxHp = (SKILL_TUNING.hp[p.general] ?? generalDef(p.general).hp) + (p.role === 'lord' ? (SKILL_TUNING.lordBonus[n] ?? LORD_BONUS[n]) : 0);
       p.hp = p.maxHp;
     }
 

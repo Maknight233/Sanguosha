@@ -7,6 +7,7 @@ export const MAX_RECORDS = 20;
 const RECORDS_KEY = 'sanguo.records';
 const STATS_KEY = 'sanguo.stats';
 const LEVEL_KEY = 'sanguo.level';
+const PLAYERS_KEY = 'sanguo.players';
 
 export interface Tally {
   games: number;
@@ -19,6 +20,8 @@ export interface Stats {
   byGeneral: Record<string, Tally>;
   /** 按 AI 难度（旧数据没有此项） */
   byLevel?: Partial<Record<AiLevel, Tally>>;
+  /** 按人数（旧数据没有此项；旧记录都是 5 人） */
+  byPlayers?: Record<string, Tally>;
 }
 
 type KV = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -47,7 +50,7 @@ function read<T>(store: KV, key: string, fallback: T): T {
   }
 }
 
-export const emptyStats = (): Stats => ({ total: { games: 0, wins: 0 }, byRole: {}, byGeneral: {}, byLevel: {} });
+export const emptyStats = (): Stats => ({ total: { games: 0, wins: 0 }, byRole: {}, byGeneral: {}, byLevel: {}, byPlayers: {} });
 
 export function loadRecords(store: KV = defaultStore()): GameRecord[] {
   return read<GameRecord[]>(store, RECORDS_KEY, []);
@@ -68,6 +71,8 @@ export function saveGame(rec: GameRecord, store: KV = defaultStore()): void {
   stats.byGeneral[rec.general] = bump(stats.byGeneral[rec.general], rec.won);
   const level = (rec.level ?? 'normal') as AiLevel;
   stats.byLevel = { ...stats.byLevel, [level]: bump(stats.byLevel?.[level], rec.won) };
+  const n = String(recordPlayers(rec));
+  stats.byPlayers = { ...stats.byPlayers, [n]: bump(stats.byPlayers?.[n], rec.won) };
   try {
     store.setItem(RECORDS_KEY, JSON.stringify(records));
   } catch {
@@ -89,5 +94,18 @@ export function loadLevel(store: KV = defaultStore()): AiLevel {
 export function saveLevel(level: AiLevel, store: KV = defaultStore()): void {
   store.setItem(LEVEL_KEY, level);
 }
+
+/** 上次选择的人数 */
+export function loadPlayers(store: KV = defaultStore()): number {
+  const n = Number(store.getItem(PLAYERS_KEY));
+  return n >= 5 && n <= 8 ? n : 5;
+}
+
+export function savePlayers(n: number, store: KV = defaultStore()): void {
+  store.setItem(PLAYERS_KEY, String(n));
+}
+
+/** 记录的人数（缺少名字列表的记录按 5 人算） */
+export const recordPlayers = (rec: GameRecord) => rec.names?.length ?? 5;
 
 export const winRate = (t: Tally | undefined) => (t && t.games > 0 ? `${((t.wins / t.games) * 100).toFixed(0)}%` : '-');
