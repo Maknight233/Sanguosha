@@ -151,6 +151,9 @@ export const SKILL_TUNING = {
 };
 
 /** 对目标有害的锦囊 */
+/** 对多名角色使用、逐个目标询问【识破】的群体锦囊 */
+export const GROUP_TRICK_KEYS = new Set(['xiwen', 'xiuzheng']);
+
 /** 对目标有害的锦囊 */
 export const HARMFUL_TRICK_KEYS = new Set(['jieying', 'cefan', 'xiwen', 'biwu', 'duanliang', 'junling', 'tianlei']);
 
@@ -1488,6 +1491,8 @@ export class Game {
           user,
           target,
           countering: cancelled,
+          trickId: trick.id,
+          group: GROUP_TRICK_KEYS.has(trick.key),
         });
         if (!c) continue;
         this.markShipo(s, trick.key, target, !cancelled);

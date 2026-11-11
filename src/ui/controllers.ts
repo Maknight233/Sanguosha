@@ -5,6 +5,8 @@ type Resolver = (r: Response<Request>) => void;
 /** 人类玩家：把引擎的请求挂起，等待界面操作后再回答 */
 export class HumanController implements Controller {
   pending: { req: Request; resolve: Resolver } | null = null;
+  /** 选择「不识破」的群体锦囊牌 id：此牌后续目标不再询问（别人出【识破】时的反制仍会询问） */
+  skipShipoTrick: number | null = null;
   private listeners = new Set<() => void>();
   cancelled = false;
 
@@ -19,6 +21,7 @@ export class HumanController implements Controller {
 
   decide<R extends Request>(_view: GameView, req: R): Promise<Response<R>> {
     if (this.cancelled) return new Promise(() => {});
+    if (this.skipsShipo(req)) return Promise.resolve(null as Response<R>);
     return new Promise((res) => {
       this.pending = {
         req,
@@ -34,6 +37,17 @@ export class HumanController implements Controller {
 
   answer(r: Response<Request>): void {
     this.pending?.resolve(r);
+  }
+
+  /** 群体锦囊：本张牌对所有目标都不出【识破】 */
+  skipShipo(trickId: number): void {
+    this.skipShipoTrick = trickId;
+    this.answer(null);
+  }
+
+  private skipsShipo(req: Request): boolean {
+    if (req.type !== 'respond' || req.reason.kind !== 'shipo') return false;
+    return !req.reason.countering && req.reason.trickId !== undefined && req.reason.trickId === this.skipShipoTrick;
   }
 }
 

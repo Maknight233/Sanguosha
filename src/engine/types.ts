@@ -108,7 +108,8 @@ export type RespondReason =
   | { kind: 'dodge'; source: number }
   | { kind: 'save'; dying: number }
   /** countering=true 表示要抵消的是一张【识破】 */
-  | { kind: 'shipo'; trick: string; user: number; target: number; countering: boolean }
+  /** trickId：被询问的锦囊牌 id；group：是否为对多名角色使用的群体锦囊（檄文、休整） */
+  | { kind: 'shipo'; trick: string; user: number; target: number; countering: boolean; trickId?: number; group?: boolean }
   | { kind: 'xiwen'; source: number }
   | { kind: 'biwu'; opponent: number }
   | { kind: 'yulin'; source: number | null }

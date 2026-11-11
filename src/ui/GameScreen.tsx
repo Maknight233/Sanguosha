@@ -638,6 +638,17 @@ function PlayerArea({
               不出
             </button>
           )}
+          {req?.type === 'respond' && req.reason.kind === 'shipo' && req.reason.group && !req.reason.countering && req.reason.trickId !== undefined && (
+            <button
+              title="这张群体锦囊剩下的目标都不再询问；有人出【识破】时仍会问你是否反制"
+              onClick={() => {
+                setSelection(EMPTY);
+                human.skipShipo((req.reason as { trickId: number }).trickId);
+              }}
+            >
+              不识破此【{cardDef(req.reason.trick).name}】
+            </button>
+          )}
         </div>
       </div>
       {req && <RequestModal key={JSON.stringify(req)} view={view} req={req} answer={answer} keysEnabled={keysEnabled} />}
