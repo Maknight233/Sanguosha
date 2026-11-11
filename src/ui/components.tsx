@@ -4,6 +4,7 @@ import { FACTION_NAME, generalDef } from '../data/generals';
 import { ROLE_NAME, YINREN_TEXT } from '../engine/game';
 import type { Card, EquipSlot, PlayerPublic } from '../engine/types';
 import { CardTip, SkillTip, tipProps } from './tooltip';
+import { CardArt, GeneralArt, hasCardArt, hasGeneralArt } from './art';
 
 const RANK_TEXT = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const KIND_NAME = { basic: '基础', trick: '锦囊', equip: '装备' } as const;
@@ -30,11 +31,26 @@ export function CardView({ card, selected, disabled, small, hotkey, onClick }: C
         {SUIT_SYMBOL[card.suit]}
         {RANK_TEXT[card.rank]}
       </div>
-      <div className="card-art">{def.image ? <img src={def.image} alt={def.name} /> : <span className="card-name">{def.name}</span>}</div>
+      <div className="card-art">
+        {def.image ? (
+          <img src={def.image} alt={def.name} />
+        ) : hasCardArt(def.key) ? (
+          <CardArt cardKey={def.key} name={def.name} kind={def.kind} />
+        ) : (
+          <span className="card-name">{def.name}</span>
+        )}
+      </div>
       <div className="card-kind">{KIND_NAME[def.kind]}</div>
       {hotkey && !disabled && <span className="hotkey">{hotkey}</span>}
     </div>
   );
+}
+
+/** 武将头像：有图片用图片，否则用程序生成的水墨头像 */
+function Portrait({ g }: { g: ReturnType<typeof generalDef> }) {
+  if (g.image) return <img src={g.image} alt={g.name} />;
+  if (hasGeneralArt(g.key)) return <GeneralArt general={g.key} name={g.name} faction={g.faction} />;
+  return <span>{g.name}</span>;
 }
 
 export function GeneralCard({
@@ -54,7 +70,9 @@ export function GeneralCard({
   return (
     <div className={`general-card faction-${g.faction} ${selected ? 'selected' : ''} ${onClick ? 'clickable' : ''}`} onClick={onClick}>
       {hotkey && <span className="hotkey">{hotkey}</span>}
-      <div className="general-portrait">{g.image ? <img src={g.image} alt={g.name} /> : <span>{g.name}</span>}</div>
+      <div className="general-portrait">
+        <Portrait g={g} />
+      </div>
       <div className="general-head">
         <span className="faction-tag">{FACTION_NAME[g.faction]}</span>
         <b>{g.name}</b>
@@ -149,7 +167,7 @@ export function SeatView({ p, isCurrent, selectable, selected, distance, inRange
         </span>
       </div>
       <div className="general-portrait small">
-        {g?.image ? <img src={g.image} alt={g.name} /> : <span>{g?.name ?? '选将中'}</span>}
+        {g ? <Portrait g={g} /> : <span>选将中</span>}
       </div>
       {g && (
         <div className="seat-info">

@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
+  <!-- 主菜单：水墨山水（远山、江面、落日、孤舟、飞鸟） -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6efdc"/>
+      <stop offset=".62" stop-color="#efe4c8"/>
+      <stop offset="1" stop-color="#e2d4b2"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="1180" cy="330" r="260" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e9b48f" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#e9b48f" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mist" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#efe4c8" stop-opacity="0"/>
+      <stop offset=".6" stop-color="#efe4c8" stop-opacity=".95"/>
+      <stop offset="1" stop-color="#ebdfc2" stop-opacity="1"/>
+    </linearGradient>
+    <linearGradient id="river" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ebdfc2" stop-opacity="0"/>
+      <stop offset="1" stop-color="#e2d4b2" stop-opacity="1"/>
+    </linearGradient>
+    <filter id="b8" x="-10%" y="-10%" width="120%" height="130%"><feGaussianBlur stdDeviation="8"/></filter>
+    <filter id="b4" x="-10%" y="-10%" width="120%" height="130%"><feGaussianBlur stdDeviation="4"/></filter>
+    <filter id="b1"><feGaussianBlur stdDeviation="1.2"/></filter>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".75" numOctaves="2" seed="7" result="n"/>
+      <feColorMatrix in="n" values="0 0 0 0 .35  0 0 0 0 .28  0 0 0 0 .18  0 0 0 .55 -.2"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <rect width="1600" height="900" fill="url(#glow)"/>
+  <circle cx="1180" cy="330" r="62" fill="#c4553b" opacity=".82"/>
+
+  <!-- 飞鸟 -->
+  <g fill="none" stroke="#3b3833" stroke-width="2.2" stroke-linecap="round" opacity=".55">
+    <path d="M1010,250 q9,-8 18,0 q9,-8 18,0"/>
+    <path d="M1060,222 q7,-6 14,0 q7,-6 14,0"/>
+    <path d="M968,214 q6,-5 12,0 q6,-5 12,0"/>
+  </g>
+
+  <!-- 远山 -->
+  <g filter="url(#b8)" opacity=".42" fill="#8f897c">
+    <path d="M-20,620 C80,560 150,470 240,500 C300,520 330,430 420,440 C520,452 560,540 650,530 C760,518 800,400 900,420 C990,440 1030,520 1120,505 C1230,488 1280,420 1380,450 C1470,478 1540,540 1620,520 L1620,660 L-20,660 Z"/>
+  </g>
+  <rect y="500" width="1600" height="240" fill="url(#mist)"/>
+
+  <!-- 中景山 -->
+  <g filter="url(#b4)" opacity=".55" fill="#5f5a50">
+    <path d="M-20,700 C40,640 110,560 190,600 C240,624 270,560 330,570 C410,584 440,660 520,680 L600,740 L-20,740 Z"/>
+    <path d="M1060,710 C1120,650 1180,600 1250,620 C1300,634 1330,560 1410,566 C1490,572 1540,640 1620,630 L1620,740 L1020,740 Z"/>
+  </g>
+
+  <!-- 江面 -->
+  <rect y="690" width="1600" height="210" fill="url(#river)"/>
+  <g stroke="#8f897c" stroke-linecap="round" opacity=".35">
+    <path d="M520,742 L760,742" stroke-width="2"/>
+    <path d="M860,760 L1180,760" stroke-width="2"/>
+    <path d="M640,790 L900,790" stroke-width="1.6"/>
+    <path d="M1000,812 L1240,812" stroke-width="1.6"/>
+    <path d="M1080,742 L1180,742" stroke-width="1.4"/>
+  </g>
+  <!-- 落日倒影 -->
+  <g fill="#c4553b" opacity=".28">
+    <rect x="1140" y="728" width="80" height="4" rx="2"/>
+    <rect x="1156" y="744" width="50" height="3" rx="1.5"/>
+    <rect x="1166" y="758" width="30" height="3" rx="1.5"/>
+  </g>
+
+  <!-- 孤舟 -->
+  <g fill="#2e2b27" opacity=".78" filter="url(#b1)">
+    <path d="M870,772 C900,786 980,786 1012,770 C990,776 900,778 870,772 Z"/>
+    <path d="M936,772 L940,744 L946,744 L948,772 Z"/>
+    <circle cx="943" cy="740" r="5"/>
+    <path d="M948,752 L996,792" stroke="#2e2b27" stroke-width="2"/>
+  </g>
+
+  <!-- 近景山石与松 -->
+  <g filter="url(#b1)" fill="#2f2c28" opacity=".82">
+    <path d="M-20,900 L-20,700 C30,680 70,700 100,660 C130,620 170,650 200,700 C230,750 290,760 330,800 C360,830 420,850 470,900 Z"/>
+    <path d="M1620,900 L1620,720 C1580,700 1550,740 1510,730 C1470,720 1450,780 1400,800 C1360,816 1320,860 1280,900 Z"/>
+  </g>
+  <!-- 崖边松：弯曲的干与几簇针叶 -->
+  <g fill="#2f2c28" opacity=".82" filter="url(#b1)">
+    <path d="M128,668 C132,640 120,620 138,596 C150,580 146,566 158,556 L162,560 C152,572 158,588 146,604 C132,624 142,642 136,668 Z"/>
+    <path transform="translate(150,562) scale(1.0)" d="M-46,6 C-44,-4 -34,-10 -26,-6 C-22,-16 -8,-18 -2,-10 C4,-18 18,-18 22,-8 C30,-12 42,-6 46,4 C30,10 -30,12 -46,6 Z"/>
+    <path transform="translate(116,600) scale(0.8)" d="M-46,6 C-44,-4 -34,-10 -26,-6 C-22,-16 -8,-18 -2,-10 C4,-18 18,-18 22,-8 C30,-12 42,-6 46,4 C30,10 -30,12 -46,6 Z"/>
+    <path transform="translate(178,604) scale(0.7)" d="M-46,6 C-44,-4 -34,-10 -26,-6 C-22,-16 -8,-18 -2,-10 C4,-18 18,-18 22,-8 C30,-12 42,-6 46,4 C30,10 -30,12 -46,6 Z"/>
+    <path transform="translate(160,532) scale(0.6)" d="M-46,6 C-44,-4 -34,-10 -26,-6 C-22,-16 -8,-18 -2,-10 C4,-18 18,-18 22,-8 C30,-12 42,-6 46,4 C30,10 -30,12 -46,6 Z"/>
+  </g>
+
+  <rect width="1600" height="900" filter="url(#grain)" opacity=".5"/>
+</svg>

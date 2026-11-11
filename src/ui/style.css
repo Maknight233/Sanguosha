@@ -25,7 +25,8 @@ table { border-collapse: collapse; }
 th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; vertical-align: top; }
 
 /* 菜单与规则 */
-.menu { text-align: center; padding-top: 18vh; }
+.menu { text-align: center; padding: 18vh 16px 40px; min-height: 100vh; background: var(--bg) url('./bg/menu.svg') center bottom / cover no-repeat fixed; }
+.menu h1 { text-shadow: 0 0 18px #f6efdc; }
 .menu h1 { font-size: 56px; letter-spacing: 8px; margin-bottom: 8px; }
 .menu-buttons { display: flex; flex-direction: column; gap: 16px; align-items: center; margin-top: 40px; }
 .rules { max-width: 960px; margin: 0 auto; padding: 24px; line-height: 1.7; }
@@ -39,7 +40,7 @@ th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; v
   grid-template-columns: 1fr 1fr 1fr;
   grid-template-rows: auto 1fr auto;
   grid-template-areas: "top top top" "left center right" "me me me";
-  background: radial-gradient(ellipse at center, #5b7a52 0%, #3e5a3a 75%);
+  background: #e3d7ba url('./bg/table.svg') center / cover no-repeat;
   overflow: auto;
 }
 /* 座位从玩家右手边逆时针环绕：右侧从下往上、上方从右往左、左侧从上往下（见 src/ui/layout.ts） */
@@ -50,15 +51,15 @@ th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; v
 .table.crowded .seat-row-top { gap: 24px; }
 .table.crowded .seat { width: 170px; font-size: 12px; }
 .table.crowded .general-portrait.small { height: 36px; font-size: 18px; margin: 2px 0; }
-.area-center { grid-area: center; align-self: center; text-align: center; color: #fff; }
+.area-center { grid-area: center; align-self: center; text-align: center; color: var(--ink); }
 .area-me { grid-area: me; }
-.center-info { background: rgba(0,0,0,.25); border-radius: 8px; padding: 8px 12px; display: inline-block; }
-.center-info .muted { color: #d8e6d0; }
+.center-info { background: rgba(255,250,240,.72); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; display: inline-block; }
+.center-info .muted { color: var(--muted); }
 .speed { margin-top: 8px; }
 .speed button { padding: 2px 10px; margin-left: 4px; }
 
 /* 座位 */
-.seat { position: relative; width: 190px; background: var(--panel); border: 2px solid var(--border); border-radius: 10px; padding: 8px; font-size: 13px; }
+.seat { box-shadow: 0 1px 4px rgba(60,45,25,.18); position: relative; width: 190px; background: var(--panel); border: 2px solid var(--border); border-radius: 10px; padding: 8px; font-size: 13px; }
 .seat.current, .player-area.current { box-shadow: 0 0 0 3px #f2c94c, 0 0 14px #f2c94c; }
 .seat.selectable { cursor: pointer; border-color: #2d9cdb; box-shadow: 0 0 0 2px #2d9cdb; }
 .seat.selected { border-color: #eb5757; box-shadow: 0 0 0 3px #eb5757; }
@@ -144,10 +145,10 @@ th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; v
 .modal .hand { margin: 10px 0; min-height: 0; }
 
 /* 出牌区与濒死提示 */
-.play-zone { margin: 10px auto 0; min-height: 120px; max-width: 460px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: flex-start; background: rgba(0,0,0,.18); border-radius: 10px; padding: 8px; }
-.play-zone-empty { color: rgba(255,255,255,.35); align-self: center; letter-spacing: 4px; }
+.play-zone { margin: 10px auto 0; min-height: 120px; max-width: 460px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: flex-start; background: rgba(255,250,240,.35); border: 1px dashed rgba(139,115,85,.45); border-radius: 10px; padding: 8px; }
+.play-zone-empty { color: rgba(43,33,24,.3); align-self: center; letter-spacing: 4px; }
 .played { display: flex; flex-direction: column; align-items: center; animation: played-in .25s ease-out; }
-.played-label { font-size: 11px; color: #fff; margin-top: 2px; max-width: 72px; text-align: center; line-height: 1.3; }
+.played-label { font-size: 11px; color: var(--ink); margin-top: 2px; max-width: 72px; text-align: center; line-height: 1.3; }
 @keyframes played-in { from { opacity: 0; transform: translateY(-14px) scale(.85); } to { opacity: 1; transform: none; } }
 .dying-banner { margin-top: 8px; display: inline-block; background: #b03a2e; color: #fff; font-weight: bold; padding: 4px 14px; border-radius: 6px; animation: pulse-bg 1s infinite; }
 @keyframes pulse-bg { 50% { background: #eb5757; } }
@@ -160,8 +161,8 @@ th, td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; v
 /* 特效层（不拦截点击） */
 .fx-layer { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
 .fx-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.fx-arrow { stroke: #f2c94c; stroke-width: 4; stroke-linecap: round; filter: drop-shadow(0 0 3px rgba(0,0,0,.6)); stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: fx-draw .8s ease-out forwards; }
-.fx-arrow.skill { stroke: #bb6bd9; }
+.fx-arrow { stroke: #c0392b; stroke-width: 4; stroke-linecap: round; filter: drop-shadow(0 0 3px rgba(0,0,0,.6)); stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: fx-draw .8s ease-out forwards; }
+.fx-arrow.skill { stroke: #8e44ad; }
 @keyframes fx-draw { 0% { stroke-dashoffset: 1200; opacity: 1; } 35% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
 .fx-flash { position: absolute; border-radius: 10px; display: flex; align-items: center; justify-content: center; animation: fx-flash .8s ease-out forwards; }
 .fx-damage { background: rgba(235, 87, 87, .55); }
@@ -271,3 +272,12 @@ button[data-key]::after { content: attr(data-key); margin-left: 6px; padding: 0 
 .log-open { margin: 8px; }
 .log-modal { display: flex; flex-direction: column; width: min(640px, 80vw); height: min(70vh, 640px); }
 .log-modal .log { border: 1px solid var(--border); border-radius: 4px; }
+/* 水墨美术：头像与卡面是铺满容器的内联 SVG */
+.general-art { display: block; width: 100%; height: 100%; }
+.card-art { position: absolute; inset: 0; border-radius: 5px; overflow: hidden; z-index: 0; }
+.card-art-svg { display: block; width: 100%; height: 100%; }
+.card-art .card-name, .card-art img { position: relative; }
+.card-art:has(.card-name), .card-art:has(img) { position: static; flex: 1; }
+.card-corner, .card-kind, .card .hotkey { z-index: 1; }
+.card-corner { background: #fbf6e6cc; border-radius: 3px; padding: 0 2px; line-height: 1.15; }
+.card-kind { position: absolute; bottom: 2px; left: 0; right: 0; text-align: center; margin: 0; }
