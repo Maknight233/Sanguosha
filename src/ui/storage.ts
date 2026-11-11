@@ -9,6 +9,7 @@ const STATS_KEY = 'sanguo.stats';
 const LEVEL_KEY = 'sanguo.level';
 const PLAYERS_KEY = 'sanguo.players';
 const INFER_KEY = 'sanguo.infer';
+const IMPORTED_KEY = 'sanguo.imported';
 
 export interface Tally {
   games: number;
@@ -85,6 +86,29 @@ export function saveGame(rec: GameRecord, store: KV = defaultStore()): void {
 
 export function clearStats(store: KV = defaultStore()): void {
   store.removeItem(STATS_KEY);
+}
+
+/** 导入的单局回放（不计入战绩，最新的在前，最多 MAX_RECORDS 局） */
+export function loadImported(store: KV = defaultStore()): GameRecord[] {
+  return read<GameRecord[]>(store, IMPORTED_KEY, []);
+}
+
+export function addImported(rec: GameRecord, store: KV = defaultStore()): GameRecord[] {
+  const list = [rec, ...loadImported(store).filter((r) => r.id !== rec.id)].slice(0, MAX_RECORDS);
+  store.setItem(IMPORTED_KEY, JSON.stringify(list));
+  return list;
+}
+
+export function removeImported(id: string, store: KV = defaultStore()): GameRecord[] {
+  const list = loadImported(store).filter((r) => r.id !== id);
+  store.setItem(IMPORTED_KEY, JSON.stringify(list));
+  return list;
+}
+
+/** 用全量备份替换自己的对局记录与战绩（导入的回放不受影响） */
+export function replaceAll(records: GameRecord[], stats: Stats, store: KV = defaultStore()): void {
+  store.setItem(RECORDS_KEY, JSON.stringify(records.slice(0, MAX_RECORDS)));
+  store.setItem(STATS_KEY, JSON.stringify(stats));
 }
 
 /** 上次选择的 AI 难度 */

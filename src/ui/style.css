@@ -260,3 +260,8 @@ button[data-key]::after { content: attr(data-key); margin-left: 6px; padding: 0 
 .infer-toggle.active { background: #2f80ed; color: #fff; }
 .replay-perspective { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 6px 0; }
 .replay-perspective select { font-size: 13px; }
+.transfer-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.confirm-box { border: 1px solid #c9a227; background: #fff8e1; padding: 8px 12px; border-radius: 4px; margin: 8px 0; }
+.import-tag { margin-left: 6px; font-size: 12px; background: #e3edfb; color: #1e4f8f; border-radius: 3px; padding: 0 4px; }
+.record-actions { white-space: nowrap; }
+.record-actions button + button { margin-left: 4px; }
