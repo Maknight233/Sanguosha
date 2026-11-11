@@ -58,9 +58,9 @@ export const PLAYER_COUNTS = [5, 6, 7, 8];
 /** 内奸身份技【隐忍】生效的人数（7、8 人局；平衡测试可改） */
 export const YINREN_PLAYERS = new Set([7, 8]);
 /** 【隐忍】摸牌数上限 / 伤害值 */
-export const YINREN_DRAW_MAX = 3;
+export const YINREN_DRAW_MAX = 4;
 export const YINREN_DAMAGE = 2;
-export const YINREN_TEXT = `内奸身份技（仅 7、8 人局；有 2 名内奸时，另一名阵亡后才获得），每局限一次，以下二选一：① 保命：获得此技能后首次进入濒死状态时，你可以亮出身份，将体力回复至 1 点，然后防止你受到的所有伤害，直到你的回合开始；② 主动：出牌阶段，你可以亮出身份并选择一项：摸 X 张牌（X 为你本局受到过的伤害，至多 ${YINREN_DRAW_MAX}）；或对一名其他角色造成 ${YINREN_DAMAGE} 点伤害，其本回合不能使用或打出牌。主动发动后失去保命效果；不发动保命也会失去此技能。`;
+export const YINREN_TEXT = `内奸身份技（仅 7、8 人局；有 2 名内奸时，另一名阵亡后才获得），每局限一次，以下二选一：① 保命：获得此技能后首次进入濒死状态时，你可以亮出身份，将体力回复至 1 点，然后防止你受到的所有伤害，直到你的回合开始；② 主动：出牌阶段，你可以亮出身份并选择一项：摸 X 张牌（X 为你本局受到过的伤害，至多 ${YINREN_DRAW_MAX}），之后你使用或打出的 X 张牌（含虚拟牌）伤害 / 回复值 +1；或对一名其他角色造成 ${YINREN_DAMAGE} 点伤害，其本回合不能使用或打出牌。主动发动后失去保命效果；不发动保命也会失去此技能。`;
 export const STANDARD_ROLES: Role[] = ROLE_TABLE[5];
 export const INITIAL_HAND = 4;
 export const DRAW_PER_TURN = 2;
@@ -218,6 +218,12 @@ export class Game {
   damageTaken: number[] = [];
   /** 本回合不能使用或打出牌的座位（【隐忍】） */
   locked = new Set<number>();
+  /** 【隐忍】摸牌后剩余的强化次数（之后使用或打出的牌，伤害 / 回复 +1） */
+  empower: number[] = [];
+  /** 正在结算的强化牌的使用者（可嵌套） */
+  private boostStack: number[] = [];
+  /** 最近一次 askForCard 打出的牌是否消耗了强化 */
+  private lastBoost = false;
   private listeners: Array<() => void> = [];
 
   constructor(private readonly opts: GameOptions) {
@@ -543,6 +549,7 @@ export class Game {
       });
       const card = ans === 'no' ? null : this.takeFromHand(x, Number(ans));
       if (!card) continue;
+      this.consumeBoost(s);
       // 先换掉「正在判定的牌」再弃置原判定牌，避免同一张牌短暂同时出现在两处
       this.pendingJudge = card;
       this.discard([result]);
@@ -893,7 +900,7 @@ export class Game {
       }
       const card = this.takeFromHand(p, action.cardId)!;
       this.beginResolution();
-      await this.useCard(p, card, action.target, extra);
+      await this.withBoost(p.seat, this.consumeBoost(p.seat), () => this.useCard(p, card, action.target, extra));
     }
   }
 
@@ -941,7 +948,7 @@ export class Game {
       }
       case 'yao':
         this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: [], cards: [card] });
-        this.recover(user, 1);
+        this.recover(user, this.boostedBy(user) ? 2 : 1);
         break;
       case 'tiaobing':
         this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: [], cards: [card] });
@@ -1038,6 +1045,8 @@ export class Game {
       const n = Math.min(YINREN_DRAW_MAX, this.damageTaken[seat] ?? 0);
       this.addLog(`${this.who(seat)} 发动【隐忍】，亮出身份：【内奸】！摸 ${n} 张牌。`, { type: 'use', from: seat, to: [], cards: [], skill: '隐忍' });
       this.drawCards(p, n);
+      this.empower[seat] = n;
+      if (n > 0) this.addLog(`${this.who(seat)} 之后使用或打出的 ${n} 张牌，伤害 / 回复值 +1。`);
       return;
     }
     const target = targets[0];
@@ -1061,6 +1070,7 @@ export class Game {
         this.skillUsed.add('dujiang');
         this.takeFromHand(p, card.id);
         this.players[target].judge.push({ card, from: seat, as: 'duanliang' });
+        this.consumeBoost(seat);
         this.markHostile(seat, target, HOSTILE_WEIGHT.delay);
         this.addLog(`${this.who(seat)} 发动【渡江】，将 ${cardText(card)} 当【断粮】对 ${this.who(target)} 使用。`, {
           type: 'use',
@@ -1104,7 +1114,7 @@ export class Game {
         if (z) {
           this.addLog(`${this.who(target)} 对 ${this.who(victim)} 使用了 ${cardText(z[0])}。`, { type: 'use', from: target, to: [victim], cards: z });
           this.markHostile(target, victim, HOSTILE_WEIGHT.forced);
-          await this.resolveZhan(target, victim);
+          await this.withBoost(target, this.lastBoost, () => this.resolveZhan(target, victim));
         } else {
           const a = this.players[target];
           if (a.hand.length === 0 || !p.alive) break;
@@ -1133,7 +1143,7 @@ export class Game {
           skill: '宝刀',
         });
         this.markHostile(seat, target);
-        await this.resolveZhan(seat, target);
+        await this.withBoost(seat, this.consumeBoost(seat), () => this.resolveZhan(seat, target));
         break;
       }
       case 'duoxie': {
@@ -1203,7 +1213,7 @@ export class Game {
     // 视为使用【斩】（不计入次数）：目标可以打出【避】
     this.markHostile(seat, t);
     this.addLog(`${this.who(seat)} 发动【奇袭】，视为对 ${this.who(t)} 使用了【斩】。`, { type: 'use', from: seat, to: [t], cards: [], skill: '奇袭' });
-    await this.resolveZhan(seat, t);
+    await this.withBoost(seat, this.consumeBoost(seat), () => this.resolveZhan(seat, t));
   }
 
   async fencheng(p: Player): Promise<void> {
@@ -1392,7 +1402,14 @@ export class Game {
    * 询问某角色打出一张指定种类的牌；合法则移入弃牌堆并返回打出的牌。
    * allowPair 为 true 时，也可以用两张同颜色手牌代替（铁脊长枪）。
    */
+  /** 请求使用或打出一张牌；打出成功时消耗【隐忍】强化（【鱼鳞甲】是弃牌，不算） */
   async askForCard(seat: number, accept: string[], reason: RespondReason, allowPair = false): Promise<Card[] | null> {
+    const res = await this.askForCardInner(seat, accept, reason, allowPair);
+    this.lastBoost = !!res && reason.kind !== 'yulin' && this.consumeBoost(seat);
+    return res;
+  }
+
+  private async askForCardInner(seat: number, accept: string[], reason: RespondReason, allowPair: boolean): Promise<Card[] | null> {
     const p = this.players[seat];
     // 隐忍：被封牌的角色不能使用或打出牌（鱼鳞甲是弃牌，不受影响）
     if (this.locked.has(seat) && reason.kind !== 'yulin') return null;
@@ -1441,12 +1458,18 @@ export class Game {
 
   /** via：造成伤害的牌（用于鱼鳞甲判断） */
   /** 返回实际造成的伤害值 */
-  async damage(source: number | null, target: number, amount: number, via?: 'zhan'): Promise<number> {
+  /** boosted：已计入【隐忍】强化（舍身转移伤害时避免重复 +1） */
+  async damage(source: number | null, target: number, amount: number, via?: 'zhan', boosted = false): Promise<number> {
+    if (!boosted && this.boostedBy(source)) {
+      amount += 1;
+      boosted = true;
+      this.addLog(`${this.who(source!)} 的【隐忍】强化：伤害 +1。`);
+    }
     if (this.shielded.has(target)) {
       this.addLog(`${this.who(target)} 的【隐忍】防止了 ${amount} 点伤害。`);
       return 0;
     }
-    if (await this.sheshen(source, target, amount, via)) return 0;
+    if (await this.sheshen(source, target, amount, via, boosted)) return 0;
     const t = this.players[target];
     const armor = t.equips.armor?.key;
 
@@ -1490,7 +1513,7 @@ export class Game {
   }
 
   /** 典韦【舍身】：代替距离 1 的其他角色承受伤害，然后摸牌；发动返回 true（原目标不受伤害） */
-  private async sheshen(source: number | null, target: number, amount: number, via?: 'zhan'): Promise<boolean> {
+  private async sheshen(source: number | null, target: number, amount: number, via?: 'zhan', boosted = false): Promise<boolean> {
     if (this.sheshenTurn === this.turn) return false;
     const dw = this.players.find((x) => this.is(x.seat, 'dianwei'));
     if (!dw || dw.seat === target || this.shielded.has(dw.seat) || this.distance(dw.seat, target) !== 1) return false;
@@ -1514,7 +1537,7 @@ export class Game {
       skill: '舍身',
     });
     this.markHelp(dw.seat, target, HELP_WEIGHT.protect);
-    await this.damage(source, dw.seat, amount, via);
+    await this.damage(source, dw.seat, amount, via, boosted);
     if (dw.alive) this.drawCards(dw, SHESHEN_DRAW);
     return true;
   }
@@ -1544,6 +1567,29 @@ export class Game {
     p.hp = Math.min(p.maxHp, p.hp + amount);
     if (p.hp <= before) return;
     this.addLog(`${this.who(seat)} 回复 ${p.hp - before} 点体力，体力 ${p.hp}/${p.maxHp}。`, { type: 'recover', seat, amount: p.hp - before });
+  }
+
+  /** 使用或打出一张牌：有【隐忍】强化次数时消耗一次，返回是否强化 */
+  private consumeBoost(seat: number): boolean {
+    if (!(this.empower[seat] > 0)) return false;
+    this.empower[seat]--;
+    this.addLog(`${this.who(seat)} 的【隐忍】强化生效（剩余 ${this.empower[seat]} 张）。`);
+    return true;
+  }
+
+  /** 在强化状态下结算 fn（boosted 为 false 时直接结算） */
+  private async withBoost<T>(seat: number, boosted: boolean, fn: () => Promise<T>): Promise<T> {
+    if (!boosted) return fn();
+    this.boostStack.push(seat);
+    try {
+      return await fn();
+    } finally {
+      this.boostStack.pop();
+    }
+  }
+
+  private boostedBy(seat: number | null): boolean {
+    return seat !== null && this.boostStack.includes(seat);
   }
 
   /** 7、8 人局中最后存活的内奸拥有【隐忍】 */
@@ -1584,7 +1630,7 @@ export class Game {
         if (!card) break;
         this.addLog(`${this.who(s)} 对 ${this.who(seat)} 使用了 ${cardText(card[0])}。`, { type: 'use', from: s, to: [seat], cards: card });
         this.markHelp(s, seat, HELP_WEIGHT.save);
-        this.recover(seat, 1);
+        this.recover(seat, this.lastBoost ? 2 : 1);
         // 桃园
         if (s !== seat && this.isLord(seat, 'liubei') && this.faction(s) === 'shu') {
           this.addLog(`${this.who(seat)} 的【桃园】触发。`);
@@ -1709,6 +1755,7 @@ export class Game {
         hand: p.seat === seat ? [...p.hand] : null,
         shielded: this.shielded.has(p.seat),
         damageTaken: this.damageTaken[p.seat] ?? 0,
+        empower: this.empower[p.seat] ?? 0,
         yinren: this.hasYinren(p.seat) && !this.yinrenUsed.has(p.seat) && p.seat === seat,
       })),
     };

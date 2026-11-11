@@ -166,9 +166,10 @@ export function SeatView({ p, isCurrent, selectable, selected, distance, inRange
       </div>
       <Equips equips={p.equips} />
       <JudgeZone judge={p.judge} />
-      {(p.shielded || p.yinren) && (
+      {(p.shielded || p.yinren || !!p.empower) && (
         <div className="seat-status">
           {p.shielded && <span className="status-tag shield" {...tipProps(() => <SkillTip name="隐忍" description={YINREN_TEXT} />)}>隐忍·免伤至其回合开始</span>}
+          {!!p.empower && <span className="status-tag shield" {...tipProps(() => <SkillTip name="隐忍" description={YINREN_TEXT} />)}>隐忍·强化剩余 {p.empower} 张</span>}
           {p.yinren && <span className="status-tag" {...tipProps(() => <SkillTip name="隐忍" description={YINREN_TEXT} />)}>【隐忍】未发动</span>}
         </div>
       )}

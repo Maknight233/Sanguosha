@@ -52,6 +52,8 @@ export interface PlayerPublic {
   judge: JudgeCard[];
   /** 仅自己可见 */
   hand: Card[] | null;
+  /** 【隐忍】剩余强化次数（公开） */
+  empower?: number;
   /** 本局受到过的伤害（公开信息） */
   damageTaken?: number;
   /** 【隐忍】免伤中 */
