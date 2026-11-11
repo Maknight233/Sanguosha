@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BasicAI } from '../src/ai/basic';
 import { Game } from '../src/engine/game';
-import type { Role } from '../src/engine/types';
+import type { PlayAction, Role } from '../src/engine/types';
 import { give, makeGame, Scripted } from './helpers';
 
 const R7: Role[] = ['lord', 'loyalist', 'loyalist', 'rebel', 'rebel', 'rebel', 'renegade'];
@@ -92,9 +92,9 @@ describe('内奸【隐忍】', () => {
   });
 
   it('摸牌后的强化：之后使用的 X 张牌伤害 / 回复 +1，无伤害的牌也消耗次数', async () => {
-    const plays: (() => unknown)[] = [];
+    const plays: (() => PlayAction)[] = [];
     const ctrls = R7.map(() => new Scripted());
-    ctrls[6] = new Scripted((_v, req) => (req.type === 'play' ? (plays.shift()?.() ?? { type: 'end' }) : undefined));
+    ctrls[6] = new Scripted((_v, req) => (req.type === 'play' ? (plays.shift()?.() ?? ({ type: 'end' } as PlayAction)) : undefined));
     const { game } = await makeGame(ctrls, R7, { generals: G8.slice(0, 7) });
     const rg = game.players[6];
     rg.hp = 1;

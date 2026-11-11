@@ -19,13 +19,13 @@ function gens(spec: Record<number, string>): string[] {
 }
 
 describe('曹仁【坚城】', () => {
-  it('结束阶段摸（装备数 − 1）张；只有 1 件装备时不摸', async () => {
+  it('结束阶段装备 ≥ 2 件时摸 1 张；只有 1 件装备时不摸', async () => {
     const { game } = await setup(gens({ 1: 'caoren' }));
     equip(game, 1, 'huanshoudao');
     equip(game, 1, 'yulinjia');
     equip(game, 1, 'qiji');
     await game.runTurn(1);
-    expect(game.players[1].hand).toHaveLength(2 + 2); // 摸牌阶段 2 + 坚城 2
+    expect(game.players[1].hand).toHaveLength(2 + 1); // 摸牌阶段 2 + 坚城 1（3 件装备也只摸 1）
 
     const { game: g2 } = await setup(gens({ 1: 'caoren' }));
     equip(g2, 1, 'huanshoudao');

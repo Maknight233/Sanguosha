@@ -121,6 +121,11 @@ export const SKILL_TUNING = {
   lordBonus: {} as Record<string, number>,
   /** 武将体力覆盖，如 {"yuji":3} */
   hp: {} as Record<string, number>,
+  /** 养生回血后摸牌：always / never / lowHp（回复后体力 ≤ 2 才摸） */
+  yangshengDraw: 'lowHp' as 'always' | 'never' | 'lowHp',
+  /** 坚城：免费装备数、摸牌上限 */
+  jianchengFree: JIANCHENG_FREE,
+  jianchengCap: 1,
 };
 
 /** 对目标有害的锦囊 */
@@ -420,7 +425,7 @@ export class Game {
       this.drawCards(p, 1);
     }
     // 坚城
-    const jiancheng = equipCount(p) - JIANCHENG_FREE;
+    const jiancheng = Math.min(SKILL_TUNING.jianchengCap, equipCount(p) - SKILL_TUNING.jianchengFree);
     if (this.is(seat, 'caoren') && jiancheng > 0) {
       this.addLog(`${this.who(seat)} 发动【坚城】。`);
       this.drawCards(p, jiancheng);
@@ -451,7 +456,8 @@ export class Game {
     this.discard([card]);
     this.addLog(`${this.who(p.seat)} 发动【养生】，弃置了 ${cardText(card)}。`, { type: 'use', from: p.seat, to: [], cards: [card], skill: '养生' });
     this.recover(p.seat, 1);
-    if (card.key !== 'yao') this.drawCards(p, 1); // 弃【药】时不摸牌
+    const yd = SKILL_TUNING.yangshengDraw;
+    if (card.key !== 'yao' && (yd === 'always' || (yd === 'lowHp' && p.hp <= 2))) this.drawCards(p, 1); // 弃【药】时不摸牌
   }
 
   /**

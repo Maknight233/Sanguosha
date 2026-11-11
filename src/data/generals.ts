@@ -84,7 +84,7 @@ const defs: GeneralDef[] = [
   },
   {
     key: 'huatuo', name: '华佗', faction: 'qun', hp: 4,
-    skills: [{ name: '养生', description: '准备阶段，若你已受伤，你可以弃置一张手牌，回复 1 点体力，然后若弃置的不是【药】，摸一张牌。' }],
+    skills: [{ name: '养生', description: '准备阶段，若你已受伤，你可以弃置一张手牌，回复 1 点体力，然后若你的体力不大于 2 且弃置的不是【药】，摸一张牌。' }],
   },
   {
     key: 'zhangjiao', name: '张角', faction: 'qun', hp: 4,
@@ -127,7 +127,7 @@ const defs: GeneralDef[] = [
   // 第五批：装备（2026-11-10）
   {
     key: 'caoren', name: '曹仁', faction: 'wei', hp: 4,
-    skills: [{ name: '坚城', description: '结束阶段，你摸 X 张牌（X 为你装备区的牌数 − 1）。' }],
+    skills: [{ name: '坚城', description: '结束阶段，若你装备区的牌数不少于 2，摸一张牌。' }],
   },
   {
     key: 'zhangfei', name: '张飞', faction: 'shu', hp: 4,

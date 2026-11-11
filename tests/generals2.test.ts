@@ -115,6 +115,15 @@ describe('第二批武将', () => {
     expect(game.players[3].hand[0]).not.toBe(card);
   });
 
+  it('华佗【养生】：回复后体力大于 2 时不摸牌', async () => {
+    const { game } = await setup(gens({ 3: 'huatuo' }));
+    give(game, 3, 'zhan');
+    game.players[3].hp = 2;
+    await game.yangsheng(game.players[3]);
+    expect(game.players[3].hp).toBe(3);
+    expect(game.players[3].hand).toHaveLength(0);
+  });
+
   it('华佗【养生】弃置【药】时不摸牌', async () => {
     const { game } = await setup(gens({ 3: 'huatuo' }));
     give(game, 3, 'yao');
