@@ -158,6 +158,23 @@ const defs: GeneralDef[] = [
     key: 'huaxiong', name: '华雄', faction: 'qun', hp: 4,
     skills: [{ name: '恃勇', description: '锁定技，你受到伤害后，若伤害来源的手牌比你多，你随机获得其一张手牌。' }],
   },
+  // ───── 第七批：救援与回复 ─────
+  {
+    key: 'caiwenji', name: '蔡文姬', faction: 'qun', hp: 4,
+    skills: [{ name: '清音', description: '每回合限一次，其他角色（主公除外）进入濒死状态时，你可以弃置一张手牌，令其回复 1 点体力，然后你摸一张牌。' }],
+  },
+  {
+    key: 'daqiao', name: '大乔', faction: 'wu', hp: 4,
+    skills: [{ name: '抚伤', description: '出牌阶段限一次，你可以交给一名已受伤的其他角色（主公除外）两张手牌，令其回复 1 点体力，然后你摸一张牌。' }],
+  },
+  {
+    key: 'mizhu', name: '糜竺', faction: 'shu', hp: 4,
+    skills: [{ name: '济困', description: '出牌阶段，你可以对一名已受伤的其他角色（主公除外）使用【药】。你使用【药】令其他角色（主公除外）回复体力后，摸两张牌；令自己回复体力后，摸一张牌。' }],
+  },
+  {
+    key: 'pangde', name: '庞德', faction: 'wei', hp: 5,
+    skills: [{ name: '抬榇', description: '锁定技，你脱离濒死状态后，摸三张牌。' }],
+  },
 ];
 
 export const GENERALS: Record<string, GeneralDef> = Object.fromEntries(defs.map((g) => [g.key, g]));

@@ -265,6 +265,28 @@ const MOTIFS: Record<string, Motif> = {
       </>
     ),
   },
+  qin: {
+    draw: (
+      <>
+        <path d="M-50,-8 C-50,-16 -40,-18 -30,-16 L44,-6 C50,-5 52,4 46,6 L-30,16 C-42,18 -50,12 -50,4 Z" />
+        <g stroke="#f3ead2" strokeWidth="1.2">
+          <path d="M-40,-8 L40,-2 M-40,-2 L40,1 M-40,4 L40,4 M-40,10 L40,7" />
+        </g>
+        <path d="M-20,22 C-6,30 10,30 22,22 M-10,34 C0,40 12,38 20,32" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      </>
+    ),
+  },
+  lotus: {
+    draw: (
+      <>
+        <path d="M0,-44 C14,-26 14,-2 0,14 C-14,-2 -14,-26 0,-44 Z" />
+        <path d="M-6,14 C-34,6 -40,-20 -34,-34 C-18,-26 -6,-8 -6,14 Z" />
+        <path d="M6,14 C34,6 40,-20 34,-34 C18,-26 6,-8 6,14 Z" />
+        <path d="M-40,22 C-20,12 20,12 40,22 C20,30 -20,30 -40,22 Z" />
+        <rect x="-2.5" y="26" width="5" height="22" rx="2.5" />
+      </>
+    ),
+  },
   horse: {
     draw: (
       <>
@@ -318,6 +340,10 @@ const GENERAL_MOTIF: Record<string, string> = {
   gongsunzan: 'flag',
   dongzhuo: 'flame',
   diaochan: 'moon',
+  caiwenji: 'qin',
+  daqiao: 'lotus',
+  mizhu: 'sack',
+  pangde: 'saber',
 };
 
 const CARD_MOTIF: Record<string, string> = {

@@ -132,8 +132,25 @@ export const SKILL_TUNING = {
   taohui: 'cap' as 'two' | 'one' | 'cap',
   /** 恃勇：来源手牌须比你多至少几张 */
   shiyongDiff: 1,
+  /** 清音：round 每轮一次（蔡文姬回合开始时重置）；turn 每回合一次 */
+  qingyinLimit: 'turn' as 'round' | 'turn',
+  /** 清音发动后蔡文姬摸几张 */
+  qingyinDraw: 1,
+  /** 抬榇：摸牌数、额外回复 */
+  taichenDraw: 3,
+  taichenRecover: 0,
+  /** 反贼击杀忠臣的奖励摸牌数（0 = 无奖励） */
+  rebelKillLoyalist: 0,
+  /** 救援类技能（清音、抚伤、济困）能否以主公为目标 */
+  rescueLord: false,
+  /** 抚伤：交出的手牌数、大乔摸牌数 */
+  fushangGive: 2,
+  fushangDraw: 1,
+  /** 济困：糜竺对自己使用【药】后摸几张 */
+  jikunSelf: 1,
 };
 
+/** 对目标有害的锦囊 */
 /** 对目标有害的锦囊 */
 export const HARMFUL_TRICK_KEYS = new Set(['jieying', 'cefan', 'xiwen', 'biwu', 'duanliang', 'junling', 'tianlei']);
 
@@ -221,6 +238,8 @@ export class Game {
   bushiRoundUsed = false;
   /** 【拔矢】本回合已发动的座位 → 回合数 */
   bashiTurn = new Map<number, number>();
+  /** 蔡文姬【清音】已发动的座位（每回合开始时清空；qingyinLimit=round 时只在其本人回合开始时重置） */
+  qingyinUsed = new Set<number>();
   /** 马超【怒袭】：持有「怒」的座位 */
   nu = new Set<number>();
   /** 正在结算带「怒」的【斩】的使用者 */
@@ -287,6 +306,10 @@ export class Game {
   }
 
   /** 角色是否拥有某武将的技能（存活） */
+  private isLordSeat(seat: number): boolean {
+    return this.players[seat].role === 'lord';
+  }
+
   is(seat: number, general: string): boolean {
     const p = this.players[seat];
     return !this.opts.disableSkills && p.alive && p.general === general;
@@ -409,6 +432,8 @@ export class Game {
     this.duanliangActive = false;
     this.junlingActive = false;
     if (this.is(seat, 'yuji')) this.bushiRoundUsed = false;
+    if (SKILL_TUNING.qingyinLimit === 'turn') this.qingyinUsed.clear();
+    else this.qingyinUsed.delete(seat);
     const shieldEnds = this.shielded.delete(seat);
     this.locked.clear();
     this.addLog(`—— 第 ${this.turn} 回合：${this.who(seat)} ——`, { type: 'turn', seat });
@@ -873,6 +898,14 @@ export class Game {
     if (this.is(seat, 'weiyan') && !this.skillUsed.has('qixi')) {
       res.push({ skill: 'qixi', cardCount: 0, targets: [] });
     }
+    // 第七批：抚伤（两张手牌给已受伤的其他角色）、济困（对已受伤的其他角色使用【药】）
+    const hurt = others.filter((t) => this.players[t].hp < this.players[t].maxHp && (SKILL_TUNING.rescueLord || !this.isLordSeat(t)));
+    if (this.is(seat, 'daqiao') && !this.skillUsed.has('fushang') && p.hand.length >= SKILL_TUNING.fushangGive && hurt.length > 0) {
+      res.push({ skill: 'fushang', cardCount: SKILL_TUNING.fushangGive, targets: hurt });
+    }
+    if (this.is(seat, 'mizhu') && p.hand.some((c) => c.key === 'yao') && hurt.length > 0) {
+      res.push({ skill: 'jikun', cardCount: 1, targets: hurt });
+    }
     // 渡江：♦ 手牌当【断粮】，不受距离限制
     if (this.is(seat, 'lvmeng') && !this.skillUsed.has('dujiang') && p.hand.some((c) => c.suit === 'diamond')) {
       const targets = others.filter((t) => !this.players[t].judge.some((j) => (j.as ?? j.card.key) === 'duanliang'));
@@ -970,6 +1003,7 @@ export class Game {
       case 'yao':
         this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: [], cards: [card] });
         this.recover(user, this.boostedBy(user) ? 2 : 1);
+        if (this.is(user, 'mizhu') && SKILL_TUNING.jikunSelf > 0) this.drawCards(p, SKILL_TUNING.jikunSelf);
         break;
       case 'tiaobing':
         this.addLog(`${this.who(user)} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: [], cards: [card] });
@@ -1202,7 +1236,65 @@ export class Game {
         this.drawCards(p, 1);
         break;
       }
+      case 'fushang': {
+        this.skillUsed.add('fushang');
+        const given = cards.map((c) => this.takeFromHand(p, c!.id)!);
+        this.players[target].hand.push(...given);
+        this.addLog(`${this.who(seat)} 发动【抚伤】，交给 ${this.who(target)} ${given.length} 张手牌。`, { type: 'use', from: seat, to: [target], cards: [], skill: '抚伤' });
+        this.markHelp(seat, target, HELP_WEIGHT.heal);
+        this.recover(target, 1);
+        this.drawCards(p, SKILL_TUNING.fushangDraw);
+        break;
+      }
+      case 'jikun': {
+        const card = this.takeFromHand(p, cards[0]!.id)!;
+        this.addLog(`${this.who(seat)} 对 ${this.who(target)} 使用了 ${cardText(card)}（【济困】）。`, { type: 'use', from: seat, to: [target], cards: [card], skill: '济困' });
+        this.discard([card]);
+        this.markHelp(seat, target, HELP_WEIGHT.heal);
+        this.recover(target, 1);
+        this.jikunDraw(seat);
+        break;
+      }
     }
+  }
+
+  /** 糜竺【济困】：用【药】令其他角色回复体力后摸两张牌 */
+  private jikunDraw(seat: number): void {
+    if (!this.is(seat, 'mizhu')) return;
+    this.addLog(`${this.who(seat)} 发动【济困】，摸两张牌。`);
+    this.drawCards(this.players[seat], 2);
+  }
+
+  /** 蔡文姬【清音】：其他角色进入濒死时，弃一张手牌令其回复 1 点体力 */
+  private async qingyin(seat: number): Promise<void> {
+    for (const s of this.aliveFrom(this.current)) {
+      if (s === seat || !this.is(s, 'caiwenji') || this.qingyinUsed.has(s) || this.players[s].hand.length === 0) continue;
+      if (!SKILL_TUNING.rescueLord && this.isLordSeat(seat)) return;
+      const cw = this.players[s];
+      const ans = await this.ask(s, {
+        type: 'choose',
+        reason: 'qingyin',
+        target: seat,
+        options: [...cw.hand.map((c) => ({ id: String(c.id), label: `弃置 ${cardText(c)}` })), { id: 'no', label: '不发动' }],
+      });
+      const card = ans === 'no' ? null : this.takeFromHand(cw, Number(ans));
+      if (!card) continue;
+      this.qingyinUsed.add(s);
+      this.discard([card]);
+      this.addLog(`${this.who(s)} 发动【清音】，弃置 ${cardText(card)}，令 ${this.who(seat)} 回复 1 点体力。`, { type: 'use', from: s, to: [seat], cards: [card], skill: '清音' });
+      this.markHelp(s, seat, HELP_WEIGHT.save);
+      this.recover(seat, 1);
+      if (SKILL_TUNING.qingyinDraw > 0) this.drawCards(cw, SKILL_TUNING.qingyinDraw);
+      return;
+    }
+  }
+
+  /** 庞德【抬榇】：脱离濒死状态后摸三张牌 */
+  private taichen(seat: number): void {
+    if (!this.is(seat, 'pangde')) return;
+    this.addLog(`${this.who(seat)} 的【抬榇】：脱离濒死，摸 ${SKILL_TUNING.taichenDraw} 张牌。`);
+    if (SKILL_TUNING.taichenRecover > 0) this.recover(seat, SKILL_TUNING.taichenRecover);
+    this.drawCards(this.players[seat], SKILL_TUNING.taichenDraw);
   }
 
   /** 董卓【焚城】：对所有其他角色各造成 1 点伤害，然后失去 1 点体力 */
@@ -1705,7 +1797,9 @@ export class Game {
   async dying(seat: number, killer: number | null): Promise<void> {
     const t = this.players[seat];
     this.addLog(`${this.who(seat)} 进入濒死状态！`, { type: 'dying', seat });
-    if (await this.yinren(seat)) return;
+    if (await this.yinren(seat)) return this.taichen(seat);
+    await this.qingyin(seat);
+    if (t.hp > 0) return this.taichen(seat);
     for (const s of this.aliveFrom(this.current)) {
       while (t.hp <= 0) {
         const card = await this.askForCard(s, ['yao'], { kind: 'save', dying: seat });
@@ -1713,13 +1807,15 @@ export class Game {
         this.addLog(`${this.who(s)} 对 ${this.who(seat)} 使用了 ${cardText(card[0])}。`, { type: 'use', from: s, to: [seat], cards: card });
         this.markHelp(s, seat, HELP_WEIGHT.save);
         this.recover(seat, this.lastBoost ? 2 : 1);
+        if (s !== seat && (SKILL_TUNING.rescueLord || !this.isLordSeat(seat))) this.jikunDraw(s);
+        else if (s === seat && this.is(s, 'mizhu') && SKILL_TUNING.jikunSelf > 0) this.drawCards(t, SKILL_TUNING.jikunSelf);
         // 桃园
         if (s !== seat && this.isLord(seat, 'liubei') && this.faction(s) === 'shu') {
           this.addLog(`${this.who(seat)} 的【桃园】触发。`);
           this.drawCards(t, 1);
         }
       }
-      if (t.hp > 0) return;
+      if (t.hp > 0) return this.taichen(seat);
     }
     await this.kill(seat, killer);
   }
@@ -1766,6 +1862,9 @@ export class Game {
     if (t.role === 'rebel') {
       this.addLog(`${this.who(killer)} 击杀反贼，奖励摸 3 张牌。`);
       this.drawCards(k, 3);
+    } else if (t.role === 'loyalist' && k.role === 'rebel' && SKILL_TUNING.rebelKillLoyalist > 0) {
+      this.addLog(`${this.who(killer)} 击杀忠臣，奖励摸 ${SKILL_TUNING.rebelKillLoyalist} 张牌。`);
+      this.drawCards(k, SKILL_TUNING.rebelKillLoyalist);
     } else if (t.role === 'loyalist' && k.role === 'lord') {
       this.addLog(`主公误杀忠臣，弃置所有手牌和装备！`);
       this.discard(k.hand.splice(0));

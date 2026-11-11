@@ -27,7 +27,7 @@ export type Relation = 'friend' | 'enemy' | 'neutral';
 /** 选将偏好：越靠前越优先 */
 const GENERAL_PREFERENCE = [
   'zhugeliang', 'guojia', 'caocao', 'liubei', 'zhaoyun', 'sunquan', 'ganning', 'lvbu', 'zhangliao', 'lusu',
-  'weiyan', 'zhangfei', 'xiahoudun', 'machao', 'zhoutai', 'huaxiong', 'xunyu', 'zhouyu', 'gongsunzan', 'dongzhuo', 'huatuo', 'lvmeng', 'yuji', 'luxun', 'taishici',
+  'weiyan', 'zhangfei', 'xiahoudun', 'machao', 'zhoutai', 'huaxiong', 'daqiao', 'mizhu', 'caiwenji', 'pangde', 'xunyu', 'zhouyu', 'gongsunzan', 'dongzhuo', 'huatuo', 'lvmeng', 'yuji', 'luxun', 'taishici',
   'huangzhong', 'caoren', 'zhangjiao', 'guanyu', 'dianwei', 'simayi', 'diaochan',
 ];
 /** 选将扰动幅度：偏好表中相差不到这么多名的武将可能互换顺序 */
@@ -200,6 +200,7 @@ class Brain {
         if (req.reason === 'dingce') return this.dingce(req.judge!);
         if (req.reason === 'liuxing') return this.liuxing(req.target!);
         if (req.reason === 'bashi') return this.bashi(req.target!, req.options);
+        if (req.reason === 'qingyin') return this.qingyin(req.target!, req.options);
         return this.choose(req.reason, req.options);
       case 'selectCards':
         if (req.reason === 'huoxin') return this.cheapest(req.cards, req.count).map((c) => c.id);
@@ -673,6 +674,24 @@ class Brain {
         return this.fenchengWorth() ? { type: 'skill', skill: s.skill, cards: [], targets: [] } : null;
       case 'qixi':
         return { type: 'skill', skill: s.skill, cards: [], targets: [] };
+      case 'fushang': {
+        // 给体力最低的队友（主公优先）两张不值钱的牌；自己手牌太少时不送【药】
+        const friends = s.targets.filter(this.isFriend);
+        const t = friends.includes(this.lord.seat) ? this.lord.seat : this.weakest(friends);
+        if (t === undefined) return null;
+        const cards = this.cheapest(this.hand.filter((c) => c.key !== 'yao'), s.cardCount);
+        if (cards.length < s.cardCount) return null;
+        return { type: 'skill', skill: s.skill, cards: cards.map((c) => c.id), targets: [t] };
+      }
+      case 'jikun': {
+        // 自己不缺血（或体力不低）时，把【药】用在体力最低的队友身上，然后摸两张
+        if (this.me.hp <= 1) return null;
+        const friends = s.targets.filter(this.isFriend);
+        const t = friends.includes(this.lord.seat) ? this.lord.seat : this.weakest(friends);
+        const yao = this.hand.find((c) => c.key === 'yao');
+        if (t === undefined || !yao) return null;
+        return { type: 'skill', skill: s.skill, cards: [yao.id], targets: [t] };
+      }
       case 'dujiang': {
         // 用不值钱的 ♦ 牌给体力高、手牌少的敌人上【断粮】
         const card = this.cheapest(this.hand.filter((c) => c.suit === 'diamond'), 1)[0];
@@ -910,6 +929,13 @@ class Brain {
   /** 拔矢：只反击敌人；弃最不值钱的牌，不弃【药】；对方会因此濒死时总是发动 */
   private bashi(source: number, options: ChoiceOption[]): string {
     if (!this.isEnemy(source)) return 'no';
+    const c = this.cheapest(this.hand.filter((x) => x.key !== 'yao'), 1)[0];
+    return c && options.some((o) => o.id === String(c.id)) ? String(c.id) : 'no';
+  }
+
+  /** 清音：和用【药】救人的判断一致；弃最不值钱的非【药】牌（有【药】时直接用【药】救更划算） */
+  private qingyin(dying: number, options: ChoiceOption[]): string {
+    if (!this.shouldSave(dying)) return 'no';
     const c = this.cheapest(this.hand.filter((x) => x.key !== 'yao'), 1)[0];
     return c && options.some((o) => o.id === String(c.id)) ? String(c.id) : 'no';
   }

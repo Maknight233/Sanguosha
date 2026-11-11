@@ -14,7 +14,7 @@ function name(view: GameView, seat: number): string {
   return p.general ? `${p.name}（${generalDef(p.general).name}）` : p.name;
 }
 
-const SKILL_NAME: Record<string, string> = { kuanren: '宽仁', huoji: '火计', huoxin: '惑心', baodao: '宝刀', lianmeng: '联盟', fencheng: '焚城', qixi: '奇袭', dujiang: '渡江', duoxie: '夺械', yinrenDraw: '隐忍·摸牌', yinrenHit: '隐忍·重创' };
+const SKILL_NAME: Record<string, string> = { kuanren: '宽仁', huoji: '火计', huoxin: '惑心', baodao: '宝刀', lianmeng: '联盟', fencheng: '焚城', qixi: '奇袭', dujiang: '渡江', duoxie: '夺械', yinrenDraw: '隐忍·摸牌', yinrenHit: '隐忍·重创', fushang: '抚伤', jikun: '济困' };
 export function skillName(key: string): string {
   return SKILL_NAME[key] ?? key;
 }
@@ -41,6 +41,7 @@ export function describeRequest(view: GameView, req: Request): string {
         bushi: `${judgeName(view, req.judge)}，是否发动【卜筮】获得之？`,
         qixi: '【奇袭】判定为黑色：选择一名距离为 1 的角色，视为对其使用【斩】',
         bashi: `是否发动【拔矢】，弃置一张手牌，对 ${req.target === undefined ? '' : name(view, req.target)} 造成 1 点伤害？`,
+        qingyin: `${req.target === undefined ? '' : name(view, req.target)} 进入濒死状态，是否发动【清音】弃置一张手牌，令其回复 1 点体力？`,
         yinren: '你进入濒死状态，是否发动【隐忍】？（亮出内奸身份，回复至 1 点体力，防止所有伤害直到你的回合开始）',
         liuxing: `${req.target === undefined ? '' : name(view, req.target)} 抵消了你的【斩】，是否发动【流星锤】弃置一张手牌，令其弃置一张牌？`,
       }[req.reason];
