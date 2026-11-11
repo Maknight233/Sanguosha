@@ -1,8 +1,16 @@
-import { describe, expect, it } from 'vitest';
-import { BasicAI } from '../src/ai/basic';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { BasicAI, DISGUISE_TUNING } from '../src/ai/basic';
 import { Game, HELP_WEIGHT, HOSTILE_WEIGHT } from '../src/engine/game';
 import type { PlayAction, Request } from '../src/engine/types';
 import { equip, give, makeGame } from './helpers';
+
+// 这些测试针对 AI 的基本行为，关闭伪装（反贼开局潜伏）
+beforeAll(() => {
+  DISGUISE_TUNING.enabled = false;
+});
+afterAll(() => {
+  DISGUISE_TUNING.enabled = true;
+});
 
 // 身份：0 主公 1 忠臣 2 反贼 3 反贼 4 内奸；距离 0-1=1，0-4=1，0-2=2，0-3=2
 

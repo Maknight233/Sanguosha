@@ -1,9 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import { BasicAI } from '../src/ai/basic';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { BasicAI, DISGUISE_TUNING } from '../src/ai/basic';
 import { buildDeck, DECK_SPEC, tianleiHit } from '../src/data/cards';
 import { Game } from '../src/engine/game';
 import type { Card, PlayAction } from '../src/engine/types';
 import { equip, give, makeGame, Scripted } from './helpers';
+
+// 这些测试针对 AI 的基本行为，关闭伪装（反贼开局潜伏）
+beforeAll(() => {
+  DISGUISE_TUNING.enabled = false;
+});
+afterAll(() => {
+  DISGUISE_TUNING.enabled = true;
+});
 
 // 身份：0 主公 1 忠臣 2 反贼 3 反贼 4 内奸；0 与 1、4 距离 1，与 2、3 距离 2
 

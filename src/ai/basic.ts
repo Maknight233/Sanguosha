@@ -76,6 +76,17 @@ export const SUSPICION_TUNING = {
   /** 嫌疑分达到此值才认定为疑似内奸（1.0 约等于两边各一次完整的行为） */
   threshold: 1.0,
 };
+/** AI 伪装参数（普通难度；模拟脚本可修改来对比） */
+export const DISGUISE_TUNING = {
+  enabled: true,
+  /** 每名反贼成为「潜伏型」的概率 */
+  rebelLurkChance: 0.5,
+  /** 潜伏最多持续的轮数（2 轮时反贼胜率 −3%，1 轮基本不变） */
+  lurkRounds: 1,
+  /** 主公体力 ≤ 此值时潜伏结束 */
+  lurkLordHp: 2,
+};
+
 /** 连锁推理的迭代轮数 */
 const LEAN_ITERATIONS = 8;
 
@@ -290,6 +301,22 @@ class Brain {
 
   relation(seat: number): Relation {
     if (seat === this.me.seat) return 'friend';
+    const base = this.baseRelation(seat);
+    if (base !== 'enemy' || this.hostile(seat, this.me.seat)) return base;
+    // 伪装：潜伏的反贼不打主公、只还击
+    return this.lurking() ? 'neutral' : base;
+  }
+
+  /** 潜伏型反贼：开局几轮内不暴露，有人阵亡、主公体力低、自己濒危或轮数到了就结束 */
+  lurking(): boolean {
+    if (!DISGUISE_TUNING.enabled || this.level === 'easy' || this.observer || this.me.role !== 'rebel') return false;
+    const v = this.view;
+    const n = v.players.length;
+    const lurker = hash(`lurk|${this.me.seat}|${v.players.map((p) => p.general).join(',')}`) % 1000 < DISGUISE_TUNING.rebelLurkChance * 1000;
+    return lurker && v.deathOrder.length === 0 && this.lord.hp > DISGUISE_TUNING.lurkLordHp && this.me.hp > 1 && v.turn <= DISGUISE_TUNING.lurkRounds * n;
+  }
+
+  private baseRelation(seat: number): Relation {
     const known = this.view.players[seat].role;
     if (known === null) {
       // 未知身份者如果只可能是某一类，直接按该身份判断

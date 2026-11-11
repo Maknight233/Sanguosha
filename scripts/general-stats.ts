@@ -4,10 +4,11 @@
  * 人数：环境变量 PLAYERS=5…8（默认 5）。
  * 调参：环境变量 SKILL='{"bushiPerRound":true}' 覆盖 SKILL_TUNING（见 src/engine/game.ts）。
  * 内奸策略：环境变量 RENEGADE='{"balanceWide":false}' 覆盖 RENEGADE_TUNING（见 src/ai/basic.ts）。
+ * 伪装：环境变量 DISGUISE='{"enabled":false}' 覆盖 DISGUISE_TUNING。
  * 内部：SHARD=i/n 时只跑 seed % n === i 的局，并输出 JSON 原始计数。
  */
 import { spawn } from 'node:child_process';
-import { BasicAI, RENEGADE_TUNING } from '../src/ai/basic';
+import { BasicAI, DISGUISE_TUNING, RENEGADE_TUNING } from '../src/ai/basic';
 import { Game, isWinner, ROLE_TABLE, SKILL_TUNING } from '../src/engine/game';
 import type { Controller, GameView, Request, Response, Role, Winner } from '../src/engine/types';
 import { GENERALS } from '../src/data/generals';
@@ -19,6 +20,7 @@ const PLAYERS = Number(process.env.PLAYERS ?? 5);
 if (process.env.ROLES) ROLE_TABLE[PLAYERS] = process.env.ROLES.split(',') as Role[];
 Object.assign(SKILL_TUNING, JSON.parse(process.env.SKILL ?? '{}'));
 Object.assign(RENEGADE_TUNING, JSON.parse(process.env.RENEGADE ?? '{}'));
+Object.assign(DISGUISE_TUNING, JSON.parse(process.env.DISGUISE ?? '{}'));
 
 /** 原始计数：roles[身份] = [胜, 场]；gens[武将][身份] = [胜, 场] */
 interface Raw {
