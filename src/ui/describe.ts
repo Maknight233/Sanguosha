@@ -40,6 +40,7 @@ export function describeRequest(view: GameView, req: Request): string {
         dingce: `${judgeName(view, req.judge)}，是否发动【定策】打出一张手牌代替？`,
         bushi: `${judgeName(view, req.judge)}，是否发动【卜筮】获得之？`,
         qixi: '【奇袭】判定为黑色：选择一名距离为 1 的角色，视为对其使用【斩】',
+        bashi: `是否发动【拔矢】，弃置一张手牌，对 ${req.target === undefined ? '' : name(view, req.target)} 造成 1 点伤害？`,
         yinren: '你进入濒死状态，是否发动【隐忍】？（亮出内奸身份，回复至 1 点体力，防止所有伤害直到你的回合开始）',
         liuxing: `${req.target === undefined ? '' : name(view, req.target)} 抵消了你的【斩】，是否发动【流星锤】弃置一张手牌，令其弃置一张牌？`,
       }[req.reason];

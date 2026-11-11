@@ -68,7 +68,7 @@ const defs: GeneralDef[] = [
   },
   {
     key: 'simayi', name: '司马懿', faction: 'wei', hp: 3,
-    skills: [{ name: '韬晦', description: '结束阶段，若本回合你没有对其他角色造成过伤害，你摸两张牌。' }],
+    skills: [{ name: '韬晦', description: '结束阶段，若本回合你没有对其他角色造成过伤害，你摸两张牌（若你的手牌数不小于体力，改为摸一张）。' }],
   },
   {
     key: 'guanyu', name: '关羽', faction: 'shu', hp: 4,
@@ -140,6 +140,23 @@ const defs: GeneralDef[] = [
   {
     key: 'gongsunzan', name: '公孙瓒', faction: 'qun', hp: 4,
     skills: [{ name: '白马', description: '你使用装备牌时，摸一张牌；你的装备区有坐骑时，攻击范围 +1。' }],
+  },
+  // 第六批：受伤触发（2026-11-11）
+  {
+    key: 'xiahoudun', name: '夏侯惇', faction: 'wei', hp: 4,
+    skills: [{ name: '拔矢', description: '每回合限一次，你受到其他角色造成的伤害后，可以弃置一张手牌，对伤害来源造成 1 点伤害。' }],
+  },
+  {
+    key: 'machao', name: '马超', faction: 'shu', hp: 4,
+    skills: [{ name: '怒袭', description: '你受到伤害后，获得 1 枚「怒」（至多 1 枚）；你使用【斩】时若有「怒」，弃置之，此【斩】伤害 +1。' }],
+  },
+  {
+    key: 'zhoutai', name: '周泰', faction: 'wu', hp: 4,
+    skills: [{ name: '坚韧', description: '你受到伤害后，若你的体力不大于 2，摸两张牌。' }],
+  },
+  {
+    key: 'huaxiong', name: '华雄', faction: 'qun', hp: 4,
+    skills: [{ name: '恃勇', description: '锁定技，你受到伤害后，若伤害来源的手牌比你多，你随机获得其一张手牌。' }],
   },
 ];
 

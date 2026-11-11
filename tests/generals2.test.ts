@@ -26,6 +26,15 @@ describe('第二批武将', () => {
     expect(game.players[1].hand).toHaveLength(2 + TAOHUI_DRAW);
   });
 
+  it('司马懿【韬晦】：手牌数不小于体力时只摸一张', async () => {
+    const { game } = await setup(gens({ 1: 'simayi' }));
+    give(game, 1, 'zhan');
+    game.current = 1;
+    await game.runTurn(1);
+    // 摸牌后 3 张 = 体力 3，不用弃牌；韬晦摸 1
+    expect(game.players[1].hand).toHaveLength(3 + TAOHUI_DRAW - 1);
+  });
+
   it('司马懿本回合造成过伤害则不发动【韬晦】', async () => {
     const { game, ctrls } = await setup(gens({ 1: 'simayi' }));
     const zhan = give(game, 1, 'zhan');

@@ -27,7 +27,7 @@ export type Relation = 'friend' | 'enemy' | 'neutral';
 /** 选将偏好：越靠前越优先 */
 const GENERAL_PREFERENCE = [
   'zhugeliang', 'guojia', 'caocao', 'liubei', 'zhaoyun', 'sunquan', 'ganning', 'lvbu', 'zhangliao', 'lusu',
-  'weiyan', 'zhangfei', 'xunyu', 'zhouyu', 'gongsunzan', 'dongzhuo', 'huatuo', 'lvmeng', 'yuji', 'luxun', 'taishici',
+  'weiyan', 'zhangfei', 'xiahoudun', 'machao', 'zhoutai', 'huaxiong', 'xunyu', 'zhouyu', 'gongsunzan', 'dongzhuo', 'huatuo', 'lvmeng', 'yuji', 'luxun', 'taishici',
   'huangzhong', 'caoren', 'zhangjiao', 'guanyu', 'dianwei', 'simayi', 'diaochan',
 ];
 /** 选将扰动幅度：偏好表中相差不到这么多名的武将可能互换顺序 */
@@ -199,6 +199,7 @@ class Brain {
         if (req.reason === 'sheshen') return this.sheshen(req.target!, req.amount ?? 1) ? 'yes' : 'no';
         if (req.reason === 'dingce') return this.dingce(req.judge!);
         if (req.reason === 'liuxing') return this.liuxing(req.target!);
+        if (req.reason === 'bashi') return this.bashi(req.target!, req.options);
         return this.choose(req.reason, req.options);
       case 'selectCards':
         if (req.reason === 'huoxin') return this.cheapest(req.cards, req.count).map((c) => c.id);
@@ -904,6 +905,13 @@ class Brain {
       return GENERAL_PREFERENCE.indexOf(g) + (hash(`${this.me.seat}|${options.join(',')}|${g}`) % 1000) / 1000 * PICK_JITTER;
     };
     return [...options].sort((a, b) => rank(a) - rank(b))[0];
+  }
+
+  /** 拔矢：只反击敌人；弃最不值钱的牌，不弃【药】；对方会因此濒死时总是发动 */
+  private bashi(source: number, options: ChoiceOption[]): string {
+    if (!this.isEnemy(source)) return 'no';
+    const c = this.cheapest(this.hand.filter((x) => x.key !== 'yao'), 1)[0];
+    return c && options.some((o) => o.id === String(c.id)) ? String(c.id) : 'no';
   }
 
   private choose(reason: ChooseReason, options: ChoiceOption[]): string {

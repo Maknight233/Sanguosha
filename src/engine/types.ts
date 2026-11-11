@@ -117,7 +117,7 @@ export type RespondReason =
   /** 惑心：须对 victim 使用【斩】，否则交给 from 一张手牌 */
   | { kind: 'huoxin'; victim: number; from: number };
 
-export type ChooseReason = 'xiuzheng' | 'xiandeng' | 'jinfan' | 'yangsheng' | 'sheshen' | 'dingce' | 'bushi' | 'qixi' | 'liuxing' | 'yinren';
+export type ChooseReason = 'xiuzheng' | 'xiandeng' | 'jinfan' | 'yangsheng' | 'sheshen' | 'dingce' | 'bushi' | 'qixi' | 'liuxing' | 'yinren' | 'bashi';
 
 /** 判定的内容：延时锦囊的牌名，或 'qixi'（魏延【奇袭】） */
 export interface JudgeInfo {

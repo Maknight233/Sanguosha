@@ -70,6 +70,8 @@ const OTHER_CHOICES = 2;
 
 /** 司马懿【韬晦】摸牌数 */
 export const TAOHUI_DRAW = 2;
+/** 周泰【坚韧】：受伤后体力不大于此值时摸牌 */
+export const ZHOUTAI_HP = 2;
 /** 张角【聚众】最多增加的体力上限 */
 export const JUZHONG_MAX = 2;
 
@@ -126,6 +128,10 @@ export const SKILL_TUNING = {
   /** 坚城：免费装备数、摸牌上限 */
   jianchengFree: JIANCHENG_FREE,
   jianchengCap: 1,
+  /** 韬晦：two 摸 2；one 摸 1；cap 手牌少于体力时摸 2，否则摸 1 */
+  taohui: 'cap' as 'two' | 'one' | 'cap',
+  /** 恃勇：来源手牌须比你多至少几张 */
+  shiyongDiff: 1,
 };
 
 /** 对目标有害的锦囊 */
@@ -213,6 +219,12 @@ export class Game {
   pendingJudge: Card | null = null;
   /** 于吉【卜筮】本轮已发动（于吉自己的回合开始时重置） */
   bushiRoundUsed = false;
+  /** 【拔矢】本回合已发动的座位 → 回合数 */
+  bashiTurn = new Map<number, number>();
+  /** 马超【怒袭】：持有「怒」的座位 */
+  nu = new Set<number>();
+  /** 正在结算带「怒」的【斩】的使用者 */
+  private nuZhan: number[] = [];
   /** 已发动过【隐忍】的座位 */
   yinrenUsed = new Set<number>();
   /** 【隐忍】免伤中的座位（到其下个回合开始） */
@@ -433,7 +445,8 @@ export class Game {
     // 韬晦
     if (this.is(seat, 'simayi') && !this.dealtDamageThisTurn) {
       this.addLog(`${this.who(seat)} 发动【韬晦】。`);
-      this.drawCards(p, TAOHUI_DRAW);
+      const th = SKILL_TUNING.taohui;
+      this.drawCards(p, th === 'one' || (th === 'cap' && p.hand.length >= p.hp) ? TAOHUI_DRAW - 1 : TAOHUI_DRAW);
     }
   }
 
@@ -949,7 +962,9 @@ export class Game {
         const targets = extraTarget === undefined ? [target!] : [target!, extraTarget];
         this.addLog(`${this.who(user)} 对 ${targets.map((t) => this.who(t)).join('、')} 使用了 ${cardText(card)}。`, { type: 'use', from: user, to: targets, cards: [card] });
         for (const t of targets) this.markHostile(user, t);
-        for (const t of targets) await this.resolveZhan(user, t);
+        await this.withNu(user, async () => {
+          for (const t of targets) await this.resolveZhan(user, t);
+        });
         break;
       }
       case 'yao':
@@ -1120,7 +1135,8 @@ export class Game {
         if (z) {
           this.addLog(`${this.who(target)} 对 ${this.who(victim)} 使用了 ${cardText(z[0])}。`, { type: 'use', from: target, to: [victim], cards: z });
           this.markHostile(target, victim, HOSTILE_WEIGHT.forced);
-          await this.withBoost(target, this.lastBoost, () => this.resolveZhan(target, victim));
+          const boosted = this.lastBoost;
+          await this.withNu(target, () => this.withBoost(target, boosted, () => this.resolveZhan(target, victim)));
         } else {
           const a = this.players[target];
           if (a.hand.length === 0 || !p.alive) break;
@@ -1466,6 +1482,7 @@ export class Game {
   /** 返回实际造成的伤害值 */
   /** boosted：已计入【隐忍】强化（舍身转移伤害时避免重复 +1） */
   async damage(source: number | null, target: number, amount: number, via?: 'zhan', boosted = false): Promise<number> {
+    if (via === 'zhan' && source !== null && this.nuZhan.includes(source)) amount += 1;
     if (!boosted && this.boostedBy(source)) {
       amount += 1;
       boosted = true;
@@ -1515,7 +1532,66 @@ export class Game {
     }
     // 谋算
     if (this.is(target, 'guojia')) await this.mousuan(target);
+    await this.afterDamaged(source, target);
     return amount;
+  }
+
+  /** 第六批：受到伤害后触发的技能 */
+  private async afterDamaged(source: number | null, target: number): Promise<void> {
+    const t = this.players[target];
+    // 怒袭
+    if (this.is(target, 'machao') && !this.nu.has(target)) {
+      this.nu.add(target);
+      this.addLog(`${this.who(target)} 的【怒袭】：获得「怒」。`);
+    }
+    // 坚韧
+    if (this.is(target, 'zhoutai') && t.hp <= ZHOUTAI_HP) {
+      this.addLog(`${this.who(target)} 发动【坚韧】。`);
+      this.drawCards(t, 2);
+    }
+    if (source === null || source === target || !this.players[source].alive) return;
+    const s = this.players[source];
+    // 恃勇
+    if (this.is(target, 'huaxiong') && s.hand.length >= t.hand.length + SKILL_TUNING.shiyongDiff) {
+      const [card] = s.hand.splice(this.rng.int(s.hand.length), 1);
+      t.hand.push(card);
+      this.addLog(`${this.who(target)} 的【恃勇】：随机获得 ${this.who(source)} 的一张手牌。`);
+    }
+    // 拔矢
+    if (this.is(target, 'xiahoudun') && t.hand.length > 0 && this.bashiTurn.get(target) !== this.turn) {
+      const ans = await this.ask(target, {
+        type: 'choose',
+        reason: 'bashi',
+        target: source,
+        options: [...t.hand.map((c) => ({ id: String(c.id), label: `弃置 ${cardText(c)}` })), { id: 'no', label: '不发动' }],
+      });
+      const card = ans === 'no' ? null : this.takeFromHand(t, Number(ans));
+      if (!card) return;
+      this.bashiTurn.set(target, this.turn);
+      this.discard([card]);
+      this.markHostile(target, source);
+      this.addLog(`${this.who(target)} 发动【拔矢】，弃置 ${cardText(card)}，对 ${this.who(source)} 造成伤害。`, {
+        type: 'use',
+        from: target,
+        to: [source],
+        cards: [card],
+        skill: '拔矢',
+      });
+      await this.damage(target, source, 1);
+    }
+  }
+
+  /** 马超【怒袭】：使用【斩】时若有「怒」则弃置，此【斩】伤害 +1 */
+  private async withNu(user: number, fn: () => Promise<void>): Promise<void> {
+    if (!this.nu.has(user) || !this.is(user, 'machao')) return fn();
+    this.nu.delete(user);
+    this.addLog(`${this.who(user)} 弃置「怒」，此【斩】伤害 +1。`);
+    this.nuZhan.push(user);
+    try {
+      await fn();
+    } finally {
+      this.nuZhan.pop();
+    }
   }
 
   /** 典韦【舍身】：代替距离 1 的其他角色承受伤害，然后摸牌；发动返回 true（原目标不受伤害） */
