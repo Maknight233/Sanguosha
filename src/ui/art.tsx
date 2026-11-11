@@ -27,6 +27,8 @@ const sword = (
   </>
 );
 
+const ARMOR_SHAPE = 'M-40,-36 L-16,-44 C-8,-34 8,-34 16,-44 L40,-36 L34,-8 L26,-12 L26,46 L-26,46 L-26,-12 L-34,-8 Z';
+
 const MOTIFS: Record<string, Motif> = {
   glaive: {
     long: true,
@@ -129,10 +131,10 @@ const MOTIFS: Record<string, Motif> = {
   staff: {
     draw: (
       <>
-        <rect x="-2.5" y="-30" width="5" height="78" rx="2.5" />
-        <path d="M0,-28 C-22,-34 -22,-6 -6,-8 C4,-10 2,-22 -6,-20" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
-        <rect x="8" y="-22" width="14" height="30" rx="2" />
-        <path d="M2,-22 L15,-22" stroke="currentColor" strokeWidth="2" />
+        <rect x="-4" y="-26" width="8" height="76" rx="4" />
+        <path d="M0,-24 C-34,-30 -36,10 -10,8 C8,6 6,-16 -10,-14" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" />
+        <path d="M10,-30 L36,-30 L36,16 L23,10 L10,16 Z" />
+        <path d="M16,-18 L30,-18 M16,-8 L30,-8 M16,2 L30,2" stroke="#f3ead2" strokeWidth="2.5" />
       </>
     ),
   },
@@ -230,12 +232,26 @@ const MOTIFS: Record<string, Motif> = {
       </>
     ),
   },
-  armor: {
+  scaleArmor: {
     draw: (
       <>
-        <path d="M-40,-36 L-16,-44 C-8,-34 8,-34 16,-44 L40,-36 L34,-8 L26,-12 L26,46 L-26,46 L-26,-12 L-34,-8 Z" />
+        <path d={ARMOR_SHAPE} />
         <g fill="none" stroke="#f3ead2" strokeWidth="2">
-          <path d="M-26,2 L26,2 M-26,16 L26,16 M-26,30 L26,30" />
+          {[-4, 10, 24, 38].map((y, r) =>
+            [-20, -8, 4, 16].map((x) => <path key={`${x},${y}`} d={`M${x + (r % 2) * 6 - 6},${y} a6,6 0 0 0 12,0`} />),
+          )}
+        </g>
+      </>
+    ),
+  },
+  chainArmor: {
+    draw: (
+      <>
+        <path d={ARMOR_SHAPE} />
+        <g fill="none" stroke="#f3ead2" strokeWidth="1.8">
+          {[-2, 10, 22, 34].map((y, r) =>
+            [-18, -6, 6, 18].map((x) => <circle key={`${x},${y}`} cx={x + (r % 2 ? 6 : 0) - 3} cy={y} r="4.5" />),
+          )}
         </g>
       </>
     ),
@@ -246,6 +262,16 @@ const MOTIFS: Record<string, Motif> = {
         <circle cx="0" cy="0" r="42" />
         <circle cx="0" cy="0" r="30" fill="none" stroke="#f3ead2" strokeWidth="3" />
         <circle cx="0" cy="0" r="8" fill="#f3ead2" />
+      </>
+    ),
+  },
+  horse: {
+    draw: (
+      <>
+        <path d="M-34,48 C-40,22 -34,-2 -18,-20 L-22,-46 L-6,-32 C4,-40 18,-42 28,-34 C38,-26 46,-10 48,0 C50,8 44,13 36,11 C28,9 20,7 14,11 C6,18 4,32 8,48 Z" />
+        <path d="M-18,-20 C-30,-10 -38,4 -42,20 M-12,-14 C-26,-2 -32,12 -36,30" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+        <circle cx="16" cy="-16" r="3.5" fill="#f3ead2" />
+        <path d="M40,-30 L52,-36 M42,-18 L56,-20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
       </>
     ),
   },
@@ -313,12 +339,12 @@ const CARD_MOTIF: Record<string, string> = {
   bintieji: 'halberd',
   liuxingchui: 'hammer',
   shenbigong: 'bow',
-  yulinjia: 'armor',
-  suozijia: 'armor',
+  yulinjia: 'scaleArmor',
+  suozijia: 'chainArmor',
   shoumiandun: 'shield',
   huxinjing: 'mirror',
-  qiji: 'horseshoe',
-  hualiu: 'horseshoe',
+  qiji: 'horse',
+  hualiu: 'horse',
   qingcong: 'horseshoe',
   huangbiao: 'horseshoe',
 };
@@ -342,9 +368,10 @@ function place(m: Motif, cx: number, cy: number, size: number, angle = -38): Rea
 export function GeneralArt({ general, name, faction }: { general: string; name: string; faction: string }) {
   const m = MOTIFS[GENERAL_MOTIF[general] ?? 'sword'];
   const color = FACTION_COLOR[faction] ?? FACTION_COLOR.qun;
-  const size = name.length >= 3 ? 54 : 76;
-  // 长兵器斜贯全图，名字居中；徽记靠左，名字略偏右
-  const nameX = m.long ? 142 : name.length >= 3 ? 174 : 182;
+  const three = name.length >= 3;
+  const size = three ? 64 : 76;
+  // 长兵器斜贯全图，名字居中；徽记靠左，名字略偏右（三字名时徽记缩小让位）
+  const nameX = m.long ? 142 : three ? 160 : 182;
   return (
     <svg className="general-art" viewBox="0 0 300 180" preserveAspectRatio="xMidYMid slice" role="img" aria-label={name}>
       <defs>
@@ -362,7 +389,7 @@ export function GeneralArt({ general, name, faction }: { general: string; name: 
         <path d="M-10,170 C60,130 120,160 180,134 C230,114 270,150 320,138 L320,190 L-10,190 Z" fill="#3b3833" />
       </g>
       <g color={INK} fill={INK} opacity=".4">
-        {m.long ? place(m, 150, 92, 250, -30) : place(m, 50, 90, 88)}
+        {m.long ? place(m, 150, 92, 250, -30) : three ? place(m, 38, 90, 66) : place(m, 50, 90, 88)}
       </g>
       <text x={nameX} y={90 + size * 0.34} textAnchor="middle" fontFamily={KAI} fontSize={size} fontWeight="bold" fill={INK}>
         {name}

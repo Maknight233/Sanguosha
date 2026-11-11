@@ -5,6 +5,7 @@ import { CARD_DEFS } from '../src/data/cards';
 import { GENERAL_KEYS, GENERALS } from '../src/data/generals';
 import { hasCardArt, hasGeneralArt } from '../src/ui/art';
 import { CardView, GeneralCard } from '../src/ui/components';
+import { InkSplash } from '../src/ui/effects';
 
 afterEach(cleanup);
 
@@ -35,5 +36,15 @@ describe('水墨美术', () => {
     } finally {
       delete g.image;
     }
+  });
+});
+
+describe('水墨动效', () => {
+  it('墨点形状由 seed 决定，重伤时飞溅更多', () => {
+    const html = (seed: number, heavy = false) => render(<InkSplash seed={seed} heavy={heavy} />).container.innerHTML;
+    expect(html(5)).toBe(html(5));
+    expect(html(5)).not.toBe(html(6));
+    const { container } = render(<InkSplash seed={5} heavy />);
+    expect(container.querySelectorAll('circle')).toHaveLength(11);
   });
 });

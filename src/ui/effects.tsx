@@ -83,27 +83,33 @@ export function EffectsLayer({ log, container, maxBatch }: { log: LogEntry[]; co
     <div className="fx-layer">
       <svg className="fx-svg">
         <defs>
-          <marker id="fx-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-            <path d="M0,0 L10,5 L0,10 z" fill="#f2c94c" />
+          {/* 毛笔线：边缘轻微抖动；箭头是一笔折锋 */}
+          <filter id="fx-brush" x="-5%" y="-5%" width="110%" height="110%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves="1" seed="4" />
+            <feDisplacementMap in="SourceGraphic" scale="3" />
+          </filter>
+          <marker id="fx-head" viewBox="0 0 12 12" refX="7" refY="6" markerWidth="4" markerHeight="4" orient="auto">
+            <path d="M0,1 Q6,4 11,6 Q6,8 0,11 Q4,6 0,1 z" fill="#b03a2e" />
           </marker>
-          <marker id="fx-head-skill" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-            <path d="M0,0 L10,5 L0,10 z" fill="#bb6bd9" />
+          <marker id="fx-head-skill" viewBox="0 0 12 12" refX="7" refY="6" markerWidth="4" markerHeight="4" orient="auto">
+            <path d="M0,1 Q6,4 11,6 Q6,8 0,11 Q4,6 0,1 z" fill="#6a4c93" />
           </marker>
         </defs>
         {arrows.map((a) => {
           const p = center(a.from);
           const q = center(a.to);
           if (!p || !q) return null;
+          // 微微弯曲的一笔：控制点在中点的垂直方向偏移
+          const dx = q.x - p.x;
+          const dy = q.y - p.y;
+          const bend = (a.id % 2 ? 1 : -1) * 0.12;
+          const c = { x: (p.x + q.x) / 2 - dy * bend, y: (p.y + q.y) / 2 + dx * bend };
+          const d = `M${p.x},${p.y} Q${c.x},${c.y} ${q.x},${q.y}`;
           return (
-            <line
-              key={a.id}
-              className={`fx-arrow ${a.skill ? 'skill' : ''}`}
-              x1={p.x}
-              y1={p.y}
-              x2={q.x}
-              y2={q.y}
-              markerEnd={`url(#${a.skill ? 'fx-head-skill' : 'fx-head'})`}
-            />
+            <g key={a.id} className={`fx-arrow ${a.skill ? 'skill' : ''}`}>
+              <path className="fx-stroke" d={d} filter="url(#fx-brush)" markerEnd={`url(#${a.skill ? 'fx-head-skill' : 'fx-head'})`} />
+              <path className="fx-dry" d={d} />
+            </g>
           );
         })}
       </svg>
@@ -112,6 +118,7 @@ export function EffectsLayer({ log, container, maxBatch }: { log: LogEntry[]; co
         if (!r) return null;
         return (
           <div key={m.id} className={`fx-flash fx-${m.kind}`} style={{ left: r.x, top: r.y, width: r.w, height: r.h }}>
+            {m.kind === 'damage' ? <InkSplash seed={m.id} heavy={m.amount >= 2} /> : <span className="fx-halo" />}
             <span className="fx-float">{m.kind === 'damage' ? `−${m.amount}` : `+${m.amount}`}</span>
           </div>
         );
@@ -185,4 +192,48 @@ export function PlayZone({ log, shortName }: { log: LogEntry[]; shortName: (seat
 /** 当前处于濒死的角色（体力 ≤ 0 但还活着） */
 export function dyingSeats(players: ReadonlyArray<{ seat: number; alive: boolean; hp: number }>): number[] {
   return players.filter((p) => p.alive && p.hp <= 0).map((p) => p.seat);
+}
+
+/** 受伤的墨点：一大团墨加若干飞溅的小点，形状随 seed 变化 */
+export function InkSplash({ seed, heavy }: { seed: number; heavy: boolean }) {
+  let x = (seed * 9301 + 49297) % 233280;
+  const rnd = () => (x = (x * 9301 + 49297) % 233280) / 233280;
+  const drops = Array.from({ length: heavy ? 11 : 7 }, () => {
+    const ang = rnd() * Math.PI * 2;
+    const dist = 26 + rnd() * 22;
+    return { cx: 50 + Math.cos(ang) * dist, cy: 50 + Math.sin(ang) * dist * 0.8, r: 1.5 + rnd() * 4 };
+  });
+  // 主墨团：12 个随机半径的点，用二次曲线穿过相邻中点连成圆滑轮廓
+  const pts = Array.from({ length: 12 }, (_, i) => {
+    const ang = (i / 12) * Math.PI * 2;
+    const rr = 16 + rnd() * 12;
+    return [50 + Math.cos(ang) * rr, 50 + Math.sin(ang) * rr * 0.85];
+  });
+  const mid = (i: number) => {
+    const p = pts[i % 12];
+    const q = pts[(i + 1) % 12];
+    return `${((p[0] + q[0]) / 2).toFixed(1)},${((p[1] + q[1]) / 2).toFixed(1)}`;
+  };
+  const blob = `M${mid(11)} ` + pts.map((p, i) => `Q${p[0].toFixed(1)},${p[1].toFixed(1)} ${mid(i)}`).join(' ') + ' Z';
+  // 两道甩出的墨痕
+  const streaks = Array.from({ length: 2 }, () => {
+    const ang = rnd() * Math.PI * 2;
+    const r1 = 22;
+    const r2 = 40 + rnd() * 8;
+    const w = 3 + rnd() * 2;
+    const ux = Math.cos(ang);
+    const uy = Math.sin(ang);
+    return `M${50 + ux * r1 - uy * w},${50 + uy * r1 + ux * w} L${50 + ux * r2},${50 + uy * r2} L${50 + ux * r1 + uy * w},${50 + uy * r1 - ux * w} Z`;
+  });
+  return (
+    <svg className={`fx-splash ${heavy ? 'heavy' : ''}`} viewBox="0 0 100 100" style={{ rotate: `${Math.round(rnd() * 360)}deg` }}>
+      <path d={blob} />
+      {streaks.map((d, i) => (
+        <path key={`s${i}`} d={d} />
+      ))}
+      {drops.map((d, i) => (
+        <circle key={i} cx={d.cx} cy={d.cy} r={d.r} />
+      ))}
+    </svg>
+  );
 }
