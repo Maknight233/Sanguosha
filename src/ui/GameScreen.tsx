@@ -9,6 +9,7 @@ import { HumanController, PacedController, PauseGate } from './controllers';
 import { RECORD_VERSION, RecordingController, type Answer, type GameRecord } from '../engine/record';
 import { loadInfer, saveGame, saveInfer } from './storage';
 import { InferTag } from './infer';
+import { SoundControl, SoundLayer } from './SoundControl';
 import { filterLog, GeneralPanel, LOG_FILTERS, type LogFilter } from './inspect';
 import { SkillTip, tipProps, TooltipHost } from './tooltip';
 import { HelpPanel } from './help';
@@ -107,7 +108,8 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
       saveInfer(!on);
       return !on;
     });
-  const panelOpen = inspect !== null || help;
+  const [logOpen, setLogOpen] = useState(false);
+  const panelOpen = inspect !== null || help || logOpen;
   // 面板（武将详情 / 规则速查）打开时：Esc 关闭面板，其他快捷键不生效；没有面板时 F1 / ? 打开速查
   useHotkeys((a) => {
     if (!panelOpen) {
@@ -115,15 +117,21 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
         toggleInfer();
         return true;
       }
+      if (a.type === 'log' && session) {
+        if (session.pauseOnInspect) session.gate.pause();
+        setLogOpen(true);
+        return true;
+      }
       if (a.type !== 'help' || !session) return false;
       if (session.pauseOnInspect) session.gate.pause();
       setHelp(true);
       return true;
     }
-    if (a.type !== 'cancel') return a.type === 'confirm' || a.type === 'nextTarget' || a.type === 'help';
+    if (a.type !== 'cancel') return a.type === 'confirm' || a.type === 'nextTarget' || a.type === 'help' || a.type === 'log';
     session?.gate.resume();
     setInspect(null);
     setHelp(false);
+    setLogOpen(false);
     return true;
   });
 
@@ -134,6 +142,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
     setRecord(null);
     setInspect(null);
     setHelp(false);
+    setLogOpen(false);
     const unsubs = [s.game.subscribe(rerender), s.human.subscribe(rerender)];
     // 只保存正常打完的局（中途重新开始/返回菜单的不保存）
     s.game.start().then((w) => {
@@ -167,6 +176,14 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
   const closeHelp = () => {
     gate.resume();
     setHelp(false);
+  };
+  const openLog = () => {
+    if (pauseOnInspect) gate.pause();
+    setLogOpen(true);
+  };
+  const closeLog = () => {
+    gate.resume();
+    setLogOpen(false);
   };
   const view = game.view(HUMAN);
   // 读局：旁观者视角（只用公开信息，不带入你的身份）
@@ -226,6 +243,12 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
           />
         </div>
         <EffectsLayer key={round} log={game.log} container={tableRef} />
+        <SoundLayer
+          key={`sound-${round}`}
+          log={game.log}
+          pendingKey={pending ? JSON.stringify(pending.req) + game.log.length : null}
+          result={winner ? (isWinner(game.players[HUMAN], winner) ? 'win' : 'lose') : null}
+        />
         {!winner && !panelOpen && <TipLayer key={`tip-${round}`} view={view} req={pending?.req ?? null} />}
       </div>
       <aside className="side">
@@ -239,20 +262,32 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
             ?
           </button>
         </div>
-        <LogPanel game={game} />
+        <button className="log-open" onClick={openLog} title="查看出牌记录（L）；单机时游戏暂停" data-key="L">
+          出牌记录
+        </button>
+        <SoundControl />
       </aside>
       {inspect !== null && (
         <GeneralPanel p={view.players[inspect]} isMe={inspect === HUMAN} paused={pauseOnInspect && !winner} onClose={closeInspect} />
       )}
+      {logOpen && (
+        <Modal title="出牌记录" onClose={closeLog}>
+          <div className="log-modal">
+            {pauseOnInspect && !winner && <div className="paused-tag">游戏已暂停，关闭后继续（Esc）</div>}
+            <LogPanel game={game} />
+          </div>
+        </Modal>
+      )}
       {help && <HelpPanel players={view.players} me={HUMAN} paused={pauseOnInspect && !winner} onClose={closeHelp} />}
       <TooltipHost />
-      {winner && (
+      {winner && !logOpen && (
         <GameOver
           game={game}
           winner={winner}
           onAgain={() => setRound((r) => r + 1)}
           onExit={onExit}
           onReplay={onReplay && record ? () => onReplay(record) : undefined}
+          onLog={openLog}
         />
       )}
     </div>
@@ -507,6 +542,7 @@ function PlayerArea({
       }
       case 'help':
       case 'infer':
+      case 'log':
         return false;
       case 'nextTarget': {
         if (req.type !== 'play') return false;
@@ -789,12 +825,14 @@ function GameOver({
   onAgain,
   onExit,
   onReplay,
+  onLog,
 }: {
   game: Game;
   winner: Winner;
   onAgain: () => void;
   onExit: () => void;
   onReplay?: () => void;
+  onLog: () => void;
 }) {
   const me = game.players[HUMAN];
   const won = isWinner(me, winner);
@@ -828,6 +866,7 @@ function GameOver({
           再来一局
         </button>
         {onReplay && <button onClick={onReplay}>查看回放</button>}
+        <button onClick={onLog}>出牌记录</button>
         <button onClick={onExit}>返回菜单</button>
       </div>
     </Modal>

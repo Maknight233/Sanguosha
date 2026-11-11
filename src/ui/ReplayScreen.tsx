@@ -4,6 +4,7 @@ import { ROLE_NAME, WINNER_NAME } from '../engine/game';
 import { aiOpinions, observerOpinions, type Opinion, type Relation } from '../ai/basic';
 import { replay, viewFromSnapshot, type GameRecord, type ReplayResult, type Snapshot } from '../engine/record';
 import { InferTag, RENEGADE_MODE_NAME } from './infer';
+import { SoundControl, SoundLayer } from './SoundControl';
 import type { PlayerPublic } from '../engine/types';
 import { CardView, SeatView } from './components';
 import { dyingSeats, EffectsLayer, PlayZone } from './effects';
@@ -222,11 +223,13 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
           </div>
         </div>
         <EffectsLayer log={log} container={tableRef} maxBatch={3} />
+        <SoundLayer log={log} maxStep={2} />
       </div>
       <aside className="side">
         <div className="side-buttons">
           <button onClick={onBack}>返回</button>
         </div>
+        <SoundControl />
         <div className="replay-summary">
           <b>{WINNER_NAME[record.winner]}</b>获胜 · 共 {record.turns} 回合 · 你是 {ROLE_NAME[record.role]}（{generalDef(record.general).name}）
           {data.error && <div className="red">{data.error}</div>}

@@ -265,3 +265,9 @@ button[data-key]::after { content: attr(data-key); margin-left: 6px; padding: 0 
 .import-tag { margin-left: 6px; font-size: 12px; background: #e3edfb; color: #1e4f8f; border-radius: 3px; padding: 0 4px; }
 .record-actions { white-space: nowrap; }
 .record-actions button + button { margin-left: 4px; }
+.sound-control { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
+.sound-control input[type='range'] { flex: 1; min-width: 60px; }
+.sound-control button.active { background: #2f80ed; color: #fff; }
+.log-open { margin: 8px; }
+.log-modal { display: flex; flex-direction: column; width: min(640px, 80vw); height: min(70vh, 640px); }
+.log-modal .log { border: 1px solid var(--border); border-radius: 4px; }

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { App } from '../src/ui/App';
 import { GameScreen } from '../src/ui/GameScreen';
@@ -142,6 +142,11 @@ describe('界面', () => {
     expect(total.dodged).toBeGreaterThan(0);
     expect(total.discarded).toBeGreaterThan(0);
     expect(total.modals).toBeGreaterThan(0);
+    // 结算画面的「出牌记录」：打开时隐藏结算窗口，关闭后回到结算
+    fireEvent.click(within(document.querySelector<HTMLElement>('.choice-row')!).getByText('出牌记录'));
     expect(document.querySelector('.log')!.textContent).toContain('游戏结束');
+    expect(screen.queryByText('再来一局')).toBeNull();
+    fireEvent.click(screen.getByLabelText('关闭'));
+    expect(screen.getByText('再来一局')).toBeTruthy();
   }, 120000);
 });

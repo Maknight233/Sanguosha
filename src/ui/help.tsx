@@ -92,6 +92,7 @@ export const RULE_TOPICS: RuleTopic[] = [
               ['Tab', '在可选目标之间切换'],
               ['F1 / ?', '打开规则速查'],
               ['I', '读局：显示旁观者视角的身份推测（只用公开信息）'],
+              ['L', '查看出牌记录（对电脑时游戏暂停）'],
             ].map(([k, v]) => (
               <tr key={k}>
                 <td className="nowrap">{k}</td>

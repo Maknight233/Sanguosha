@@ -73,6 +73,25 @@ describe('提示与速查面板（界面）', () => {
     expect(loadTips()).toEqual({ seen: [], off: false });
   });
 
+  it('出牌记录默认隐藏；按钮 / L 打开时游戏暂停、可筛选，Esc 关闭', async () => {
+    await startGame();
+    expect(document.querySelector('.log')).toBeNull();
+    fireEvent.click(screen.getByText('出牌记录'));
+    expect(screen.getByText(/游戏已暂停/)).toBeTruthy();
+    expect(document.querySelectorAll('.log > div').length).toBeGreaterThan(0);
+    const seats = () => [...document.querySelectorAll('.seat-row')].map((e) => e.textContent).join('|');
+    const n = seats();
+    for (let i = 0; i < 20; i++) await tick();
+    expect(seats()).toBe(n);
+    fireEvent.click(screen.getByText('本回合'));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(document.querySelector('.log')).toBeNull();
+    fireEvent.keyDown(window, { key: 'l' });
+    expect(document.querySelector('.log')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('关闭'));
+    expect(document.querySelector('.log')).toBeNull();
+  });
+
   it('F1 打开速查：游戏暂停、显示本局 5 名武将，Esc 关闭', async () => {
     await startGame();
     fireEvent.keyDown(window, { key: 'F1' });
@@ -80,9 +99,10 @@ describe('提示与速查面板（界面）', () => {
     expect(screen.getByText(/游戏已暂停/)).toBeTruthy();
     expect(document.querySelectorAll('.help-general')).toHaveLength(5);
     // 暂停期间 AI 不推进：日志条数不变
-    const n = document.querySelectorAll('.log > div').length;
+    const seats = () => [...document.querySelectorAll('.seat-row')].map((e) => e.textContent).join('|');
+    const n = seats();
     for (let i = 0; i < 20; i++) await tick();
-    expect(document.querySelectorAll('.log > div').length).toBe(n);
+    expect(seats()).toBe(n);
     // 切换到其他页
     fireEvent.click(screen.getByText('判定与延时锦囊'));
     expect(document.querySelector('.help-body')!.textContent).toContain('判定区');
