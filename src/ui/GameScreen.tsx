@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { AI_LEVEL_NAME, BasicAI, type AiLevel } from '../ai/basic';
+import { AI_LEVEL_NAME, BasicAI, observerOpinions, type AiLevel, type Opinion } from '../ai/basic';
 import { cardDef, cardText, isRed } from '../data/cards';
 import { generalDef } from '../data/generals';
 import { Game, isWinner, ROLE_NAME, WINNER_NAME } from '../engine/game';
@@ -7,7 +7,8 @@ import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOpti
 import { CardView, Equips, GeneralCard, Hp, InfoButton, JudgeZone, Modal, SeatView } from './components';
 import { HumanController, PacedController, PauseGate } from './controllers';
 import { RECORD_VERSION, RecordingController, type Answer, type GameRecord } from '../engine/record';
-import { saveGame } from './storage';
+import { loadInfer, saveGame, saveInfer } from './storage';
+import { InferTag } from './infer';
 import { filterLog, GeneralPanel, LOG_FILTERS, type LogFilter } from './inspect';
 import { SkillTip, tipProps, TooltipHost } from './tooltip';
 import { HelpPanel } from './help';
@@ -100,10 +101,20 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
   const tableRef = useRef<HTMLDivElement>(null);
   const [inspect, setInspect] = useState<number | null>(null);
   const [help, setHelp] = useState(false);
+  const [infer, setInfer] = useState(loadInfer);
+  const toggleInfer = () =>
+    setInfer((on) => {
+      saveInfer(!on);
+      return !on;
+    });
   const panelOpen = inspect !== null || help;
   // 面板（武将详情 / 规则速查）打开时：Esc 关闭面板，其他快捷键不生效；没有面板时 F1 / ? 打开速查
   useHotkeys((a) => {
     if (!panelOpen) {
+      if (a.type === 'infer') {
+        toggleInfer();
+        return true;
+      }
       if (a.type !== 'help' || !session) return false;
       if (session.pauseOnInspect) session.gate.pause();
       setHelp(true);
@@ -158,6 +169,8 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
     setHelp(false);
   };
   const view = game.view(HUMAN);
+  // 读局：旁观者视角（只用公开信息，不带入你的身份）
+  const opinions = infer && view.turn > 0 ? observerOpinions(view) : null;
   const pending = human.pending;
   const dying = dyingSeats(game.players);
   const shortName = (s: number) => {
@@ -172,7 +185,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
         {(['right', 'top', 'left'] as const).map((side) => (
           <div key={side} className={`seat-row seat-row-${side}`}>
             {tableSides(view.players.length)[side].map((seat) => (
-              <SeatSlot key={seat} game={game} view={view} seat={seat} pending={pending?.req ?? null} onInfo={() => openInspect(seat)} />
+              <SeatSlot key={seat} game={game} view={view} seat={seat} pending={pending?.req ?? null} onInfo={() => openInspect(seat)} opinion={opinions?.[seat] ?? null} />
             ))}
           </div>
         ))}
@@ -209,6 +222,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
             human={human}
             keysEnabled={!panelOpen && !winner}
             onInfo={() => openInspect(HUMAN)}
+            opinion={opinions?.[HUMAN] ?? null}
           />
         </div>
         <EffectsLayer key={round} log={game.log} container={tableRef} />
@@ -218,6 +232,9 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
         <div className="side-buttons">
           <button onClick={() => setRound((r) => r + 1)}>重新开始</button>
           <button onClick={onExit}>返回菜单</button>
+          <button className={`infer-toggle ${infer ? 'active' : ''}`} onClick={toggleInfer} title="读局：显示 AI 视角对身份的推测 (I)" data-key="I">
+            读局
+          </button>
           <button className="help-btn" onClick={openHelp} title="规则速查 (F1)" aria-label="规则速查">
             ?
           </button>
@@ -301,12 +318,14 @@ function SeatSlot({
   seat,
   pending,
   onInfo,
+  opinion,
 }: {
   game: Game;
   view: GameView;
   seat: number;
   pending: Request | null;
   onInfo: () => void;
+  opinion: Opinion | null;
 }) {
   const sel = useSelection();
   const selectable = selectableSeats(pending, sel).includes(seat);
@@ -321,6 +340,7 @@ function SeatSlot({
       inRange={alive && game.inAttackRange(HUMAN, seat)}
       onClick={() => clickSeat(pending, sel, seat)}
       onInfo={onInfo}
+      extra={opinion && <InferTag view={view} seat={seat} op={opinion} />}
     />
   );
 }
@@ -367,11 +387,13 @@ function PlayerArea({
   human,
   keysEnabled,
   onInfo,
+  opinion,
 }: {
   view: GameView;
   human: HumanController;
   keysEnabled: boolean;
   onInfo: () => void;
+  opinion: Opinion | null;
 }) {
   const me = view.players[HUMAN];
   const hand = me.hand ?? [];
@@ -484,6 +506,7 @@ function PlayerArea({
         return !!s;
       }
       case 'help':
+      case 'infer':
         return false;
       case 'nextTarget': {
         if (req.type !== 'play') return false;
@@ -515,6 +538,7 @@ function PlayerArea({
         {g && <Hp hp={Math.max(me.hp, 0)} maxHp={me.maxHp} />}
         <Equips equips={me.equips} />
         <JudgeZone judge={me.judge} />
+        {opinion && <InferTag view={view} seat={me.seat} op={opinion} />}
         {g && (
           <div className="seat-skills">
             {g.skills.map((s) => (

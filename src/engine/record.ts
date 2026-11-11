@@ -80,6 +80,11 @@ export interface SnapshotPlayer {
   hand: Card[];
   equips: Player['equips'];
   judge: JudgeCard[];
+  /** 已主动亮出身份（【隐忍】） */
+  revealed?: boolean;
+  shielded?: boolean;
+  empower?: number;
+  damageTaken?: number;
 }
 
 export interface Snapshot {
@@ -89,6 +94,12 @@ export interface Snapshot {
   drawPileCount: number;
   discardPileCount: number;
   players: SnapshotPlayer[];
+  zhanUsed?: number;
+  zhanLimit?: number;
+  /** 公开的敌对 / 帮助记录与阵亡顺序（「读局」重建推理用） */
+  hostility?: number[][];
+  help?: number[][];
+  deathOrder?: number[];
 }
 
 export interface ReplayResult {
@@ -117,6 +128,50 @@ function snapshot(game: Game): Snapshot {
       hand: [...p.hand],
       equips: { ...p.equips },
       judge: p.judge.map((j) => ({ ...j })),
+      revealed: game.revealed.has(p.seat),
+      shielded: game.shielded.has(p.seat),
+      empower: game.empower[p.seat] ?? 0,
+      damageTaken: game.damageTaken[p.seat] ?? 0,
+    })),
+    zhanUsed: game.zhanUsed,
+    zhanLimit: game.zhanLimit,
+    hostility: game.hostility.map((r) => [...r]),
+    help: game.help.map((r) => [...r]),
+    deathOrder: [...game.deathOrder],
+  };
+}
+
+/** 从快照重建 seat 视角能看到的局面（只有自己、主公、阵亡者、已亮身份者的身份可见） */
+export function viewFromSnapshot(snap: Snapshot, seat: number): GameView {
+  const n = snap.players.length;
+  const zero = () => Array.from({ length: n }, () => Array<number>(n).fill(0));
+  return {
+    me: seat,
+    current: snap.current,
+    phase: snap.phase,
+    turn: snap.turn,
+    drawPileCount: snap.drawPileCount,
+    discardPileCount: snap.discardPileCount,
+    zhanUsed: snap.zhanUsed ?? 0,
+    zhanLimit: snap.zhanLimit ?? 1,
+    hostility: snap.hostility ?? zero(),
+    help: snap.help ?? zero(),
+    deathOrder: snap.deathOrder ?? [],
+    players: snap.players.map((p) => ({
+      seat: p.seat,
+      name: p.name,
+      general: p.general,
+      role: p.seat === seat || p.role === 'lord' || !p.alive || p.revealed ? p.role : null,
+      hp: p.hp,
+      maxHp: p.maxHp,
+      alive: p.alive,
+      handCount: p.hand.length,
+      equips: { ...p.equips },
+      judge: p.judge.map((j) => ({ ...j })),
+      hand: p.seat === seat ? [...p.hand] : null,
+      shielded: p.shielded,
+      empower: p.empower,
+      damageTaken: p.damageTaken,
     })),
   };
 }

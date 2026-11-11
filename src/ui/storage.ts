@@ -8,6 +8,7 @@ const RECORDS_KEY = 'sanguo.records';
 const STATS_KEY = 'sanguo.stats';
 const LEVEL_KEY = 'sanguo.level';
 const PLAYERS_KEY = 'sanguo.players';
+const INFER_KEY = 'sanguo.infer';
 
 export interface Tally {
   games: number;
@@ -103,6 +104,23 @@ export function loadPlayers(store: KV = defaultStore()): number {
 
 export function savePlayers(n: number, store: KV = defaultStore()): void {
   store.setItem(PLAYERS_KEY, String(n));
+}
+
+/** 「读局」开关（默认关闭） */
+export function loadInfer(store: KV = defaultStore()): boolean {
+  try {
+    return store.getItem(INFER_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveInfer(on: boolean, store: KV = defaultStore()): void {
+  try {
+    store.setItem(INFER_KEY, on ? '1' : '0');
+  } catch {
+    /* 忽略 */
+  }
 }
 
 /** 记录的人数（缺少名字列表的记录按 5 人算） */

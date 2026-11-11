@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { generalDef } from '../data/generals';
 import { ROLE_NAME, WINNER_NAME } from '../engine/game';
-import { replay, type GameRecord, type ReplayResult, type Snapshot } from '../engine/record';
+import { aiOpinions, observerOpinions, type Opinion, type Relation } from '../ai/basic';
+import { replay, viewFromSnapshot, type GameRecord, type ReplayResult, type Snapshot } from '../engine/record';
+import { InferTag, RENEGADE_MODE_NAME } from './infer';
 import type { PlayerPublic } from '../engine/types';
 import { CardView, SeatView } from './components';
 import { dyingSeats, EffectsLayer, PlayZone } from './effects';
@@ -62,7 +64,31 @@ export function ReplayScreen({ record, onBack }: { record: GameRecord; onBack: (
   return <ReplayView record={record} data={data} onBack={onBack} />;
 }
 
+/** 回放「读局」视角：off 关闭；observer 旁观者；数字为该座位 AI 的视角 */
+type Perspective = 'off' | 'observer' | number;
+
+interface Reading {
+  view: ReturnType<typeof viewFromSnapshot>;
+  opinions: (Opinion | null)[];
+  relations: (Relation | null)[] | null;
+  mode: string | null;
+}
+
+/** 计算回放某一步在给定视角下的推测 */
+export function readingAt(snap: Snapshot, perspective: Perspective): Reading | null {
+  if (perspective === 'off' || snap.turn === 0) return null;
+  if (perspective === 'observer') {
+    const view = viewFromSnapshot(snap, 0);
+    return { view, opinions: observerOpinions(view), relations: null, mode: null };
+  }
+  if (!snap.players[perspective].alive) return null;
+  const view = viewFromSnapshot(snap, perspective);
+  const r = aiOpinions(view);
+  return { view, opinions: r.opinions, relations: r.relations, mode: r.mode };
+}
+
 function ReplayView({ record, data, onBack }: { record: GameRecord; data: ReplayResult; onBack: () => void }) {
+  const [perspective, setPerspective] = useState<Perspective>('off');
   const last = data.snapshots.length - 1;
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -84,6 +110,7 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   keyRef.current = (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target instanceof HTMLSelectElement) return;
     const actions: Record<string, () => void> = {
       ArrowLeft: () => go(step - 1),
       ArrowRight: () => go(step + 1),
@@ -113,6 +140,7 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
 
   const snap = data.snapshots[step];
   const log = data.log.slice(0, step + 1);
+  const reading = readingAt(snap, perspective);
   const shortName = (s: number) => {
     const p = snap.players[s];
     return p.general ? generalDef(p.general).name : p.name;
@@ -133,6 +161,11 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
                 distance={null}
                 inRange={false}
                 onClick={() => {}}
+                extra={
+                  reading && (
+                    <InferTag view={reading.view} seat={p.seat} op={reading.opinions[p.seat]} relation={reading.relations?.[p.seat]} />
+                  )
+                }
               />
               <div className="replay-hand">
                 {p.hand.map((c) => (
@@ -197,6 +230,29 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
         <div className="replay-summary">
           <b>{WINNER_NAME[record.winner]}</b>获胜 · 共 {record.turns} 回合 · 你是 {ROLE_NAME[record.role]}（{generalDef(record.general).name}）
           {data.error && <div className="red">{data.error}</div>}
+        </div>
+        <div className="replay-perspective">
+          <label>
+            读局视角：
+            <select
+              aria-label="读局视角"
+              value={String(perspective)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPerspective(v === 'off' || v === 'observer' ? v : Number(v));
+              }}
+            >
+              <option value="off">关闭</option>
+              <option value="observer">旁观者（只看公开信息）</option>
+              {snap.players.map((p) => (
+                <option key={p.seat} value={p.seat}>
+                  {p.seat === 0 ? '你' : p.name}（{p.general ? generalDef(p.general).name : '?'}·{ROLE_NAME[p.role]}）的 AI 视角
+                </option>
+              ))}
+            </select>
+          </label>
+          {typeof perspective === 'number' && !snap.players[perspective].alive && <span className="muted">此角色已阵亡</span>}
+          {reading?.mode && <span className="muted">内奸策略：{RENEGADE_MODE_NAME[reading.mode]}</span>}
         </div>
         <div className="log" ref={logRef}>
           {data.log.map((e, i) => (

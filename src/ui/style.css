@@ -247,3 +247,16 @@ button[data-key]::after { content: attr(data-key); margin-left: 6px; padding: 0 
 .seat-status { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .status-tag { font-size: 12px; background: #e3edfb; color: #1e4f8f; border: 1px solid #2f80ed; border-radius: 3px; padding: 0 4px; cursor: help; }
 .status-tag.shield { background: #2f80ed; color: #fff; }
+.infer-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; cursor: help; }
+.infer-tag { font-size: 12px; border-radius: 3px; padding: 0 4px; border: 1px solid #999; background: #f4f4f4; color: #333; }
+.infer-loyal { background: #fdecc8; border-color: #c9a227; color: #6b5200; }
+.infer-rebel { background: #d9f2df; border-color: #3c9a55; color: #1d5a2e; }
+.infer-unclear { color: #777; }
+.infer-suspect { background: #2f80ed; border-color: #2f80ed; color: #fff; }
+.rel-enemy { background: #f8d7d7; border-color: #c0392b; color: #8b1e14; }
+.rel-friend { background: #dbeafe; border-color: #2f80ed; color: #1e4f8f; }
+.rel-neutral { color: #777; }
+.infer-tip ul { margin: 4px 0; padding-left: 18px; }
+.infer-toggle.active { background: #2f80ed; color: #fff; }
+.replay-perspective { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 6px 0; }
+.replay-perspective select { font-size: 13px; }

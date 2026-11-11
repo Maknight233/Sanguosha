@@ -129,9 +129,11 @@ interface SeatProps {
   onClick: () => void;
   /** 打开武将详情 */
   onInfo?: () => void;
+  /** 座位下方的附加内容（「读局」推测） */
+  extra?: ReactNode;
 }
 
-export function SeatView({ p, isCurrent, selectable, selected, distance, inRange, onClick, onInfo }: SeatProps) {
+export function SeatView({ p, isCurrent, selectable, selected, distance, inRange, onClick, onInfo, extra }: SeatProps) {
   const g = p.general ? generalDef(p.general) : null;
   const dying = p.alive && p.hp <= 0;
   const cls = ['seat', g && `faction-${g.faction}`, isCurrent && 'current', !p.alive && 'dead', dying && 'dying', selectable && 'selectable', selected && 'selected']
@@ -166,6 +168,7 @@ export function SeatView({ p, isCurrent, selectable, selected, distance, inRange
       </div>
       <Equips equips={p.equips} />
       <JudgeZone judge={p.judge} />
+      {extra}
       {(p.shielded || p.yinren || !!p.empower) && (
         <div className="seat-status">
           {p.shielded && <span className="status-tag shield" {...tipProps(() => <SkillTip name="隐忍" description={YINREN_TEXT} />)}>隐忍·免伤至其回合开始</span>}

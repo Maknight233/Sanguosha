@@ -22,7 +22,7 @@ import type {
  * 根据「已知身份」「身份排除」和「身份倾向分」（由公开的敌对 / 帮助行为连锁推理得出）判断敌友。
  */
 
-type Relation = 'friend' | 'enemy' | 'neutral';
+export type Relation = 'friend' | 'enemy' | 'neutral';
 
 /** 选将偏好：越靠前越优先 */
 const GENERAL_PREFERENCE = [
@@ -103,6 +103,56 @@ export function inferOf(view: GameView, seat: number): { lean: number; suspicion
   return { lean: b.lean(seat), suspicion: b.suspicion(seat), suspected: b.suspectedRenegade(seat) };
 }
 
+/** 某人对某座位的身份判断（界面「读局」用） */
+export interface Opinion {
+  /** 倾向分：+1 偏忠 … −1 偏反 */
+  lean: number;
+  /** 判断结论 */
+  verdict: 'loyal' | 'rebel' | 'unclear';
+  suspicion: number;
+  suspected: boolean;
+  /** 仅 AI 视角：把对方当作敌 / 友 / 中立 */
+  relation?: Relation;
+}
+
+/** 旁观者视角：只用公开信息（主公、阵亡者、已亮身份者），去掉观看者自己的身份与手牌 */
+export function observerView(view: GameView): GameView {
+  return {
+    ...view,
+    players: view.players.map((p) => (p.seat === view.me && p.role !== 'lord' && p.alive ? { ...p, role: null, hand: null, yinren: false } : p)),
+  };
+}
+
+function opinionsOf(view: GameView, observer: boolean): (Opinion | null)[] {
+  const b = new Brain(view, 'normal', observer);
+  return view.players.map((p) => {
+    if (!p.alive || p.role !== null || (!observer && p.seat === view.me)) return null;
+    const lean = b.lean(p.seat);
+    return {
+      lean,
+      verdict: lean > LEAN_THRESHOLD ? 'loyal' : lean < -LEAN_THRESHOLD ? 'rebel' : 'unclear',
+      suspicion: b.suspicion(p.seat),
+      suspected: b.suspectedRenegade(p.seat),
+      ...(observer ? {} : { relation: b.relation(p.seat) }),
+    };
+  });
+}
+
+/** 旁观者对每个座位的判断；身份已公开或已阵亡的为 null */
+export function observerOpinions(view: GameView): (Opinion | null)[] {
+  return opinionsOf(observerView(view), true);
+}
+
+/** view.me 这名 AI 对每个座位的判断（含敌友）；自己、已公开身份、阵亡者为 null，但已知身份的也给出敌友 */
+export function aiOpinions(view: GameView): { opinions: (Opinion | null)[]; relations: (Relation | null)[]; mode: string | null } {
+  const b = new Brain(view);
+  return {
+    opinions: opinionsOf(view, false),
+    relations: view.players.map((p) => (p.alive && p.seat !== view.me ? b.relation(p.seat) : null)),
+    mode: view.players[view.me].role === 'renegade' ? b.renegadeMode() : null,
+  };
+}
+
 /** 针对单次决策的分析器 */
 class Brain {
   readonly me: PlayerPublic;
@@ -114,6 +164,8 @@ class Brain {
   constructor(
     readonly view: GameView,
     readonly level: AiLevel = 'normal',
+    /** 旁观者模式：观看者本人也作为被推理对象 */
+    readonly observer = false,
   ) {
     this.me = view.players[view.me];
     this.hand = this.me.hand ?? [];
@@ -218,7 +270,7 @@ class Brain {
    */
   suspicion(seat: number): number {
     const p = this.view.players[seat];
-    if (p.role !== null || seat === this.me.seat || !this.unknownRoles().has('renegade')) return 0;
+    if (p.role !== null || (!this.observer && seat === this.me.seat) || !this.unknownRoles().has('renegade')) return 0;
     let proLord = 0;
     let proRebel = 0;
     for (let t = 0; t < this.view.players.length; t++) {
@@ -308,7 +360,7 @@ class Brain {
    * 内奸策略：第一个角色阵亡前按兵不动；
    * 第一个阵亡的是忠臣 → 帮主公；是反贼 → 帮反贼，但反贼人数追平主公方后转回帮主公。
    */
-  private renegadeMode(): 'wait' | 'lord' | 'rebels' | 'balance' {
+  renegadeMode(): 'wait' | 'lord' | 'rebels' | 'balance' {
     const first = this.view.deathOrder[0];
     const { rebels, loyalists, loyalistAlive } = this.aliveCounts();
     if (first === undefined) return 'wait';

@@ -91,6 +91,7 @@ export const RULE_TOPICS: RuleTopic[] = [
               ['Q、W', '发动第 1、2 个技能'],
               ['Tab', '在可选目标之间切换'],
               ['F1 / ?', '打开规则速查'],
+              ['I', '读局：显示旁观者视角的身份推测（只用公开信息）'],
             ].map(([k, v]) => (
               <tr key={k}>
                 <td className="nowrap">{k}</td>
