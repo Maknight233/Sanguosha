@@ -52,6 +52,12 @@ export interface PlayerPublic {
   judge: JudgeCard[];
   /** 仅自己可见 */
   hand: Card[] | null;
+  /** 本局受到过的伤害（公开信息） */
+  damageTaken?: number;
+  /** 【隐忍】免伤中 */
+  shielded?: boolean;
+  /** 拥有尚未发动的【隐忍】（只有自己可见） */
+  yinren?: boolean;
 }
 
 export interface GameView {
@@ -82,7 +88,7 @@ export interface PlayOption {
 
 /** 出牌阶段可发动的主动技能 */
 export interface SkillOption {
-  skill: 'kuanren' | 'huoji' | 'huoxin' | 'baodao' | 'lianmeng' | 'fencheng' | 'qixi' | 'dujiang' | 'duoxie';
+  skill: 'kuanren' | 'huoji' | 'huoxin' | 'baodao' | 'lianmeng' | 'fencheng' | 'qixi' | 'dujiang' | 'duoxie' | 'yinrenDraw' | 'yinrenHit';
   /** 需要弃置/使用的手牌张数 */
   cardCount: number;
   /** 第一目标候选；空数组表示无需指定目标（如焚城） */
@@ -109,7 +115,7 @@ export type RespondReason =
   /** 惑心：须对 victim 使用【斩】，否则交给 from 一张手牌 */
   | { kind: 'huoxin'; victim: number; from: number };
 
-export type ChooseReason = 'xiuzheng' | 'xiandeng' | 'jinfan' | 'yangsheng' | 'sheshen' | 'dingce' | 'bushi' | 'qixi' | 'liuxing';
+export type ChooseReason = 'xiuzheng' | 'xiandeng' | 'jinfan' | 'yangsheng' | 'sheshen' | 'dingce' | 'bushi' | 'qixi' | 'liuxing' | 'yinren';
 
 /** 判定的内容：延时锦囊的牌名，或 'qixi'（魏延【奇袭】） */
 export interface JudgeInfo {

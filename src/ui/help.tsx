@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { DRAW_PER_TURN, ROLE_NAME } from '../engine/game';
+import { DRAW_PER_TURN, ROLE_NAME, YINREN_TEXT } from '../engine/game';
 import { FACTION_NAME, generalDef } from '../data/generals';
 import type { PlayerPublic } from '../engine/types';
 import { Modal } from './components';
@@ -68,7 +68,7 @@ export const RULE_TOPICS: RuleTopic[] = [
             <b>反贼</b>：击杀主公。
           </li>
           <li>
-            <b>内奸</b>：成为最后唯一存活的角色（主公最后死于与内奸的单挑）。
+            <b>内奸</b>：成为最后唯一存活的角色（主公最后死于与内奸的单挑）。7、8 人局最后存活的内奸拥有身份技【隐忍】：{YINREN_TEXT}
           </li>
         </ul>
         <p>奖惩：击杀反贼者摸 3 张牌；主公误杀忠臣，弃置所有手牌和装备。</p>

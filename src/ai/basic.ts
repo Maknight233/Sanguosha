@@ -1,5 +1,5 @@
 import { BASIC_KEYS, cardDef, isRed, TIANLEI_DAMAGE, tianleiHit } from '../data/cards';
-import { ROLE_TABLE, seatDistance } from '../engine/game';
+import { ROLE_TABLE, seatDistance, YINREN_DAMAGE } from '../engine/game';
 import type {
   Card,
   CardPick,
@@ -58,6 +58,11 @@ export const RENEGADE_TUNING = {
   stealLastRebel: false,
   /** 平衡模式下主公体力 ≤ 此值时转回帮主公（0 = 不转；模拟中 1 效果最好） */
   balanceLordDangerHp: 1,
+  /** 多忠臣局（7、8 人）：忠臣人数 ≥ 反贼人数时就进入平衡（打忠臣、保反贼）。'yinren' = 仅在拥有或刚发动【隐忍】时 */
+  balanceWide: 'off' as 'off' | 'yinren' | 'always',
+  /** 【隐忍】主动发动：never 只留着保命；kill 能打死敌人时重创；all 另外在 X 达到 drawAt 时摸牌 */
+  yinrenActive: 'kill' as 'never' | 'kill' | 'all',
+  yinrenDrawAt: 3,
 };
 
 /** 焚城发动门槛（敌人 +1、可击杀 +3，队友 −1.5、会被打死 −5） */
@@ -305,8 +310,9 @@ class Brain {
    */
   private renegadeMode(): 'wait' | 'lord' | 'rebels' | 'balance' {
     const first = this.view.deathOrder[0];
-    if (first === undefined) return 'wait';
     const { rebels, loyalists, loyalistAlive } = this.aliveCounts();
+    if (first === undefined) return 'wait';
+    if (this.wideBalance() && rebels >= 1 && loyalists >= rebels && this.lord.hp > RENEGADE_TUNING.balanceLordDangerHp) return 'balance';
     // 平衡：最后一个反贼一死，内奸就要面对主公 + 忠臣，所以转打忠臣、保住反贼
     if (RENEGADE_TUNING.balance && rebels === 1 && loyalistAlive && this.lord.hp > RENEGADE_TUNING.balanceLordDangerHp)
       return 'balance';
@@ -314,6 +320,14 @@ class Brain {
     // 动态切换：反贼人数不再少于主公方时（如忠臣也阵亡了），转回帮主公
     const lordSide = 1 + loyalists;
     return rebels >= lordSide || this.lord.hp <= LORD_DANGER_HP ? 'lord' : 'rebels';
+  }
+
+  /** 是否使用多忠臣局的「宽平衡」 */
+  private wideBalance(): boolean {
+    const mode = RENEGADE_TUNING.balanceWide;
+    if (mode === 'off' || !RENEGADE_TUNING.balance || this.aliveCounts().loyalists < 2) return false;
+    const me = this.view.players[this.me.seat];
+    return mode === 'always' || !!me.yinren || !!me.shielded;
   }
 
   /** 存活的反贼、忠臣人数（总数按人数查表，减去阵亡者） */
@@ -364,11 +378,15 @@ class Brain {
   /** 抢人头是否安全：杀掉这个反贼后不会落入主公 + 忠臣 2 打 1 */
   private canStealKill(): boolean {
     if (!RENEGADE_TUNING.stealKills) return false;
-    const { rebels, loyalistAlive } = this.aliveCounts();
-    return RENEGADE_TUNING.stealLastRebel || !(rebels === 1 && loyalistAlive);
+    const { rebels, loyalists, loyalistAlive } = this.aliveCounts();
+    if (RENEGADE_TUNING.stealLastRebel) return true;
+    // 杀掉这个反贼后，忠臣不能比反贼多
+    if (this.wideBalance()) return rebels - 1 >= loyalists;
+    return !(rebels === 1 && loyalistAlive);
   }
 
-  private isEnemy = (seat: number) => this.relation(seat) === 'enemy';
+  /** 【隐忍】免伤中的角色不当作攻击目标 */
+  private isEnemy = (seat: number) => !this.view.players[seat].shielded && this.relation(seat) === 'enemy';
   private isFriend = (seat: number) => this.relation(seat) === 'friend';
 
   /** 优先攻击体力最低的目标（简单：随便挑一个） */
@@ -504,6 +522,21 @@ class Brain {
 
   private skill(s: SkillOption): PlayAction | null {
     switch (s.skill) {
+      case 'yinrenDraw': {
+        const x = this.me.damageTaken ?? 0;
+        return RENEGADE_TUNING.yinrenActive === 'all' && x >= RENEGADE_TUNING.yinrenDrawAt ? { type: 'skill', skill: s.skill, cards: [], targets: [] } : null;
+      }
+      case 'yinrenHit': {
+        if (RENEGADE_TUNING.yinrenActive === 'never') return null;
+        // 能直接打进濒死且不会自救的敌人；打反贼时要保证不落入被主公方围攻
+        const lethal = (t: number) => {
+          const p = this.view.players[t];
+          const mirror = p.equips.armor?.key === 'huxinjing' && p.hp <= 2 ? 1 : 0;
+          return p.hp + mirror <= YINREN_DAMAGE && this.isEnemy(t) && (!this.likelyRebel(t) || this.canStealKill());
+        };
+        const t = this.weakest(s.targets.filter(lethal));
+        return t === undefined ? null : { type: 'skill', skill: s.skill, cards: [], targets: [t] };
+      }
       case 'kuanren': {
         const t = this.weakest(s.targets.filter(this.isFriend));
         if (t === undefined) return null;
@@ -796,7 +829,7 @@ class Brain {
 
   private choose(reason: ChooseReason, options: ChoiceOption[]): string {
     if (reason === 'xiuzheng') return this.me.hp < this.me.maxHp ? 'recover' : 'draw';
-    if (reason === 'jinfan' || reason === 'bushi') return 'yes';
+    if (reason === 'jinfan' || reason === 'bushi' || reason === 'yinren') return 'yes';
     if (reason === 'qixi') {
       const t = this.weakest(options.filter((o) => o.id !== 'no').map((o) => Number(o.id)).filter(this.isEnemy));
       return t === undefined ? 'no' : String(t);

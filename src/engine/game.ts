@@ -55,6 +55,12 @@ export function isWinner(p: Pick<Player, 'role' | 'alive'>, winner: Winner): boo
   return p.role === winner;
 }
 export const PLAYER_COUNTS = [5, 6, 7, 8];
+/** 内奸身份技【隐忍】生效的人数（7、8 人局；平衡测试可改） */
+export const YINREN_PLAYERS = new Set([7, 8]);
+/** 【隐忍】摸牌数上限 / 伤害值 */
+export const YINREN_DRAW_MAX = 3;
+export const YINREN_DAMAGE = 2;
+export const YINREN_TEXT = `内奸身份技（仅 7、8 人局；有 2 名内奸时，另一名阵亡后才获得），每局限一次，以下二选一：① 保命：获得此技能后首次进入濒死状态时，你可以亮出身份，将体力回复至 1 点，然后防止你受到的所有伤害，直到你的回合开始；② 主动：出牌阶段，你可以亮出身份并选择一项：摸 X 张牌（X 为你本局受到过的伤害，至多 ${YINREN_DRAW_MAX}）；或对一名其他角色造成 ${YINREN_DAMAGE} 点伤害，其本回合不能使用或打出牌。主动发动后失去保命效果；不发动保命也会失去此技能。`;
 export const STANDARD_ROLES: Role[] = ROLE_TABLE[5];
 export const INITIAL_HAND = 4;
 export const DRAW_PER_TURN = 2;
@@ -202,6 +208,16 @@ export class Game {
   pendingJudge: Card | null = null;
   /** 于吉【卜筮】本轮已发动（于吉自己的回合开始时重置） */
   bushiRoundUsed = false;
+  /** 已发动过【隐忍】的座位 */
+  yinrenUsed = new Set<number>();
+  /** 【隐忍】免伤中的座位（到其下个回合开始） */
+  shielded = new Set<number>();
+  /** 已主动亮出身份的座位 */
+  revealed = new Set<number>();
+  /** 每名角色本局受到过的伤害 */
+  damageTaken: number[] = [];
+  /** 本回合不能使用或打出牌的座位（【隐忍】） */
+  locked = new Set<number>();
   private listeners: Array<() => void> = [];
 
   constructor(private readonly opts: GameOptions) {
@@ -370,7 +386,10 @@ export class Game {
     this.duanliangActive = false;
     this.junlingActive = false;
     if (this.is(seat, 'yuji')) this.bushiRoundUsed = false;
+    const shieldEnds = this.shielded.delete(seat);
+    this.locked.clear();
     this.addLog(`—— 第 ${this.turn} 回合：${this.who(seat)} ——`, { type: 'turn', seat });
+    if (shieldEnds) this.addLog(`${this.who(seat)} 的【隐忍】免伤效果结束。`);
 
     this.phase = 'prepare';
     if (this.is(seat, 'huatuo')) await this.yangsheng(p);
@@ -514,7 +533,7 @@ export class Game {
     // 定策：打出一张手牌代替判定牌，然后摸一张
     for (const s of this.aliveFrom(this.current)) {
       const x = this.players[s];
-      if (!this.is(s, 'xunyu') || x.hand.length === 0) continue;
+      if (!this.is(s, 'xunyu') || x.hand.length === 0 || this.locked.has(s)) continue;
       const judge: JudgeInfo = { seat, what, result };
       const ans = await this.ask(s, {
         type: 'choose',
@@ -837,6 +856,10 @@ export class Game {
       const targets = others.filter((t) => this.distance(seat, t) <= 1 && equipCount(this.players[t]) > 0);
       if (targets.length > 0) res.push({ skill: 'duoxie', cardCount: 0, targets });
     }
+    if (this.hasYinren(seat) && !this.yinrenUsed.has(seat)) {
+      if ((this.damageTaken[seat] ?? 0) > 0) res.push({ skill: 'yinrenDraw', cardCount: 0, targets: [] });
+      if (others.length > 0) res.push({ skill: 'yinrenHit', cardCount: 0, targets: others });
+    }
     if (this.is(seat, 'dongzhuo') && !this.fenchengUsed.has(seat) && others.length > 0) {
       res.push({ skill: 'fencheng', cardCount: 0, targets: [] });
     }
@@ -1009,10 +1032,29 @@ export class Game {
     const seat = p.seat;
     if (opt.skill === 'fencheng') return this.fencheng(p);
     if (opt.skill === 'qixi') return this.qixi(p);
+    if (opt.skill === 'yinrenDraw') {
+      this.yinrenUsed.add(seat);
+      this.revealed.add(seat);
+      const n = Math.min(YINREN_DRAW_MAX, this.damageTaken[seat] ?? 0);
+      this.addLog(`${this.who(seat)} 发动【隐忍】，亮出身份：【内奸】！摸 ${n} 张牌。`, { type: 'use', from: seat, to: [], cards: [], skill: '隐忍' });
+      this.drawCards(p, n);
+      return;
+    }
     const target = targets[0];
     if (!opt.targets.includes(target)) return;
 
     switch (opt.skill) {
+      case 'yinrenHit': {
+        this.yinrenUsed.add(seat);
+        this.revealed.add(seat);
+        this.markHostile(seat, target);
+        this.addLog(`${this.who(seat)} 发动【隐忍】，亮出身份：【内奸】！对 ${this.who(target)} 造成 ${YINREN_DAMAGE} 点伤害。`, { type: 'use', from: seat, to: [target], cards: [], skill: '隐忍' });
+        // 受到伤害时即被封牌（濒死时也不能自救）
+        this.locked.add(target);
+        if ((await this.damage(seat, target, YINREN_DAMAGE)) === 0) this.locked.delete(target);
+        else this.addLog(`${this.who(target)} 本回合不能使用或打出牌。`);
+        break;
+      }
       case 'dujiang': {
         const card = cards[0]!;
         if (card.suit !== 'diamond') return;
@@ -1352,6 +1394,8 @@ export class Game {
    */
   async askForCard(seat: number, accept: string[], reason: RespondReason, allowPair = false): Promise<Card[] | null> {
     const p = this.players[seat];
+    // 隐忍：被封牌的角色不能使用或打出牌（鱼鳞甲是弃牌，不受影响）
+    if (this.locked.has(seat) && reason.kind !== 'yulin') return null;
     // 宝刀：手牌中的装备牌可当作【斩】打出
     if (accept.includes('zhan') && this.is(seat, 'huangzhong')) {
       accept = [...new Set([...accept, ...p.hand.filter(isEquip).map((c) => c.key)])];
@@ -1398,6 +1442,10 @@ export class Game {
   /** via：造成伤害的牌（用于鱼鳞甲判断） */
   /** 返回实际造成的伤害值 */
   async damage(source: number | null, target: number, amount: number, via?: 'zhan'): Promise<number> {
+    if (this.shielded.has(target)) {
+      this.addLog(`${this.who(target)} 的【隐忍】防止了 ${amount} 点伤害。`);
+      return 0;
+    }
     if (await this.sheshen(source, target, amount, via)) return 0;
     const t = this.players[target];
     const armor = t.equips.armor?.key;
@@ -1425,6 +1473,7 @@ export class Game {
     }
 
     t.hp -= amount;
+    this.damageTaken[target] = (this.damageTaken[target] ?? 0) + amount;
     if (source === this.current && source !== target) this.dealtDamageThisTurn = true;
     const from = source === null ? '' : `${this.who(source)} 对 `;
     this.addLog(`${from}${this.who(target)} 造成 ${amount} 点伤害，体力 ${t.hp}/${t.maxHp}。`, { type: 'damage', seat: target, amount, from: source });
@@ -1444,7 +1493,7 @@ export class Game {
   private async sheshen(source: number | null, target: number, amount: number, via?: 'zhan'): Promise<boolean> {
     if (this.sheshenTurn === this.turn) return false;
     const dw = this.players.find((x) => this.is(x.seat, 'dianwei'));
-    if (!dw || dw.seat === target || this.distance(dw.seat, target) !== 1) return false;
+    if (!dw || dw.seat === target || this.shielded.has(dw.seat) || this.distance(dw.seat, target) !== 1) return false;
     const ans = await this.ask(dw.seat, {
       type: 'choose',
       reason: 'sheshen',
@@ -1497,9 +1546,38 @@ export class Game {
     this.addLog(`${this.who(seat)} 回复 ${p.hp - before} 点体力，体力 ${p.hp}/${p.maxHp}。`, { type: 'recover', seat, amount: p.hp - before });
   }
 
+  /** 7、8 人局中最后存活的内奸拥有【隐忍】 */
+  hasYinren(seat: number): boolean {
+    const p = this.players[seat];
+    if (!YINREN_PLAYERS.has(this.players.length) || p.role !== 'renegade' || !p.alive) return false;
+    return !this.players.some((x) => x !== p && x.alive && x.role === 'renegade');
+  }
+
+  /** 内奸【隐忍】：拥有此技能后首次濒死时，可亮出身份、回复至 1 点体力，并防止伤害直到自己的回合开始 */
+  private async yinren(seat: number): Promise<boolean> {
+    if (this.yinrenUsed.has(seat) || !this.hasYinren(seat)) return false;
+    this.yinrenUsed.add(seat);
+    const ans = await this.ask(seat, {
+      type: 'choose',
+      reason: 'yinren',
+      options: [
+        { id: 'yes', label: '发动【隐忍】：亮出内奸身份，回复至 1 点体力，并防止所有伤害直到你的回合开始' },
+        { id: 'no', label: '不发动（之后不能再发动）' },
+      ],
+    });
+    if (ans !== 'yes') return false;
+    const p = this.players[seat];
+    this.revealed.add(seat);
+    this.addLog(`${this.who(seat)} 发动【隐忍】，亮出身份：【内奸】！`, { type: 'use', from: seat, to: [], cards: [], skill: '隐忍' });
+    this.recover(seat, 1 - p.hp);
+    this.shielded.add(seat);
+    return true;
+  }
+
   async dying(seat: number, killer: number | null): Promise<void> {
     const t = this.players[seat];
     this.addLog(`${this.who(seat)} 进入濒死状态！`, { type: 'dying', seat });
+    if (await this.yinren(seat)) return;
     for (const s of this.aliveFrom(this.current)) {
       while (t.hp <= 0) {
         const card = await this.askForCard(s, ['yao'], { kind: 'save', dying: seat });
@@ -1621,7 +1699,7 @@ export class Game {
         seat: p.seat,
         name: p.name,
         general: p.general,
-        role: p.seat === seat || p.role === 'lord' || !p.alive ? p.role : null,
+        role: p.seat === seat || p.role === 'lord' || !p.alive || this.revealed.has(p.seat) ? p.role : null,
         hp: p.hp,
         maxHp: p.maxHp,
         alive: p.alive,
@@ -1629,6 +1707,9 @@ export class Game {
         equips: { ...p.equips },
         judge: p.judge.map((j) => ({ ...j })),
         hand: p.seat === seat ? [...p.hand] : null,
+        shielded: this.shielded.has(p.seat),
+        damageTaken: this.damageTaken[p.seat] ?? 0,
+        yinren: this.hasYinren(p.seat) && !this.yinrenUsed.has(p.seat) && p.seat === seat,
       })),
     };
   }

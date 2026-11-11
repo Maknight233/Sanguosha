@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { cardDef, isRed, SUIT_SYMBOL } from '../data/cards';
 import { FACTION_NAME, generalDef } from '../data/generals';
-import { ROLE_NAME } from '../engine/game';
+import { ROLE_NAME, YINREN_TEXT } from '../engine/game';
 import type { Card, EquipSlot, PlayerPublic } from '../engine/types';
 import { CardTip, SkillTip, tipProps } from './tooltip';
 
@@ -166,6 +166,12 @@ export function SeatView({ p, isCurrent, selectable, selected, distance, inRange
       </div>
       <Equips equips={p.equips} />
       <JudgeZone judge={p.judge} />
+      {(p.shielded || p.yinren) && (
+        <div className="seat-status">
+          {p.shielded && <span className="status-tag shield" {...tipProps(() => <SkillTip name="隐忍" description={YINREN_TEXT} />)}>隐忍·免伤至其回合开始</span>}
+          {p.yinren && <span className="status-tag" {...tipProps(() => <SkillTip name="隐忍" description={YINREN_TEXT} />)}>【隐忍】未发动</span>}
+        </div>
+      )}
       {g && (
         <div className="seat-skills">
           {g.skills.map((s) => (

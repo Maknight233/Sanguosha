@@ -44,6 +44,12 @@ export const TIPS: TipDef[] = [
     when: (c) => c.view.turn > 0 && !!c.view.players[c.view.me].general,
   },
   {
+    id: 'yinren',
+    title: '内奸身份技【隐忍】',
+    text: '7、8 人局中你（最后存活的内奸）拥有【隐忍】：首次濒死时可以亮出身份、回复至 1 点体力，并防止所有伤害直到你的回合开始。用好这一次免死，熬过主公方与反贼的混战。',
+    when: (c) => !!c.view.players[c.view.me].yinren,
+  },
+  {
     id: 'play',
     title: '出牌阶段',
     text: '点一张亮着的手牌，再点目标座位，然后「确定」（空格）。也可以按数字键选牌。用完牌点「结束出牌」（E）。',
