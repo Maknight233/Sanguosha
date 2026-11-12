@@ -78,8 +78,6 @@ export interface GameView {
   help: number[][];
   /** 阵亡顺序（座位号），公开信息 */
   deathOrder: number[];
-  /** 距上一次有人受到伤害已经过去的回合数（公开信息；AI 用来发现僵局） */
-  quietTurns: number;
 }
 
 export interface PlayOption {
