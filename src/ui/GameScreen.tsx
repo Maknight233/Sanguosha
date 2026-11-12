@@ -4,7 +4,7 @@ import { cardDef, cardText, isRed } from '../data/cards';
 import { generalDef } from '../data/generals';
 import { Game, isWinner, ROLE_NAME, WINNER_NAME } from '../engine/game';
 import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOption, Winner } from '../engine/types';
-import { CardView, Equips, GeneralCard, Hp, InfoButton, JudgeZone, Modal, SeatView } from './components';
+import { CardView, Equips, GeneralCard, Hp, InfoButton, JudgeZone, Modal, RotateHint, SeatView, SideToggle } from './components';
 import { HumanController, PacedController, PauseGate } from './controllers';
 import { RECORD_VERSION, RecordingController, type Answer, type GameRecord } from '../engine/record';
 import { loadInfer, saveGame, saveInfer } from './storage';
@@ -109,6 +109,12 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
       return !on;
     });
   const [logOpen, setLogOpen] = useState(false);
+  const [sideOpen, setSideOpen] = useState(false);
+  // 手机上侧栏是抽屉：点了里面的功能按钮就收起（调音量除外）
+  const closeSideOnAction = (e: { target: EventTarget }) => {
+    const t = e.target as HTMLElement;
+    if (t.closest('button') && !t.closest('.sound-control, .speed')) setSideOpen(false);
+  };
   const panelOpen = inspect !== null || help || logOpen;
   // 面板（武将详情 / 规则速查）打开时：Esc 关闭面板，其他快捷键不生效；没有面板时 F1 / ? 打开速查
   useHotkeys((a) => {
@@ -196,6 +202,22 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
     return p.general ? generalDef(p.general).name : p.name;
   };
 
+  // 大屏显示在牌桌中央，小屏收进侧栏抽屉（两处由样式控制只显示一处）
+  const speedControl = (
+    <div className="speed">
+      AI 速度：
+      {[
+        ['快', 150],
+        ['中', 600],
+        ['慢', 1200],
+      ].map(([label, ms]) => (
+        <button key={label} className={speed === ms ? 'active' : ''} onClick={() => setSpeed(ms as number)}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="game-layout">
       <div className={`table ${isCrowded(view.players.length) ? 'crowded' : ''}`} ref={tableRef}>
@@ -219,18 +241,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
             </div>
           ))}
           <PlayZone log={game.log} shortName={shortName} />
-          <div className="speed">
-            AI 速度：
-            {[
-              ['快', 150],
-              ['中', 600],
-              ['慢', 1200],
-            ].map(([label, ms]) => (
-              <button key={label} className={speed === ms ? 'active' : ''} onClick={() => setSpeed(ms as number)}>
-                {label}
-              </button>
-            ))}
-          </div>
+          {speedControl}
         </div>
         <div className="area-me">
           <PlayerArea
@@ -251,7 +262,9 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
         />
         {!winner && !panelOpen && <TipLayer key={`tip-${round}`} view={view} req={pending?.req ?? null} />}
       </div>
-      <aside className="side">
+      <RotateHint onExit={onExit} />
+      <SideToggle open={sideOpen} onToggle={() => setSideOpen((o) => !o)} />
+      <aside className={`side ${sideOpen ? 'open' : ''}`} onClick={closeSideOnAction}>
         <div className="side-buttons">
           <button onClick={() => setRound((r) => r + 1)}>重新开始</button>
           <button onClick={onExit}>返回菜单</button>
@@ -266,6 +279,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
           出牌记录
         </button>
         <SoundControl />
+        {speedControl}
       </aside>
       {inspect !== null && (
         <GeneralPanel p={view.players[inspect]} isMe={inspect === HUMAN} paused={pauseOnInspect && !winner} onClose={closeInspect} />

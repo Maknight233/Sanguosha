@@ -114,7 +114,8 @@ export function Equips({ equips }: { equips: PlayerPublic['equips'] }) {
         const def = cardDef(c.key);
         return (
           <span key={s} className="equip-tag" {...tipProps(() => <CardTip card={c} />)}>
-            {SLOT_NAME[s]}：{def.name}
+            <span className="equip-slot">{SLOT_NAME[s]}：</span>
+            {def.name}
           </span>
         );
       })}
@@ -168,6 +169,8 @@ export function SeatView({ p, isCurrent, selectable, selected, distance, inRange
       </div>
       <div className="general-portrait small">
         {g ? <Portrait g={g} /> : <span>选将中</span>}
+        {/* 小屏时头像缩成竖排名牌（见 style.css 手机适配） */}
+        {g && <span className="portrait-name">{g.name}</span>}
       </div>
       {g && (
         <div className="seat-info">
@@ -180,7 +183,7 @@ export function SeatView({ p, isCurrent, selectable, selected, distance, inRange
         {distance !== null && p.alive && (
           <span className={inRange ? 'in-range' : 'muted'}>
             距离 {distance}
-            {inRange ? '·可攻击' : ''}
+            {inRange && <span className="range-word">·可攻击</span>}
           </span>
         )}
       </div>
@@ -236,6 +239,48 @@ export function Modal({ title, children, onClose }: { title: string; children: R
         <h3>{title}</h3>
         {children}
       </div>
+    </div>
+  );
+}
+
+/** 小屏（手机横屏）时侧栏收成抽屉，这个按钮负责开关；大屏下不显示 */
+export function SideToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <>
+      {open && <div className="side-scrim" onClick={onToggle} />}
+      <button className="side-toggle" aria-label="菜单" aria-expanded={open} onClick={onToggle}>
+        {open ? '×' : '☰'}
+      </button>
+    </>
+  );
+}
+
+/** 手机竖屏时盖住牌桌的提示：牌桌只做了横屏布局。能锁定方向的浏览器（安卓）给一个一键全屏横屏的按钮 */
+export function RotateHint({ onExit }: { onExit?: () => void }) {
+  const canLock =
+    typeof document !== 'undefined' &&
+    typeof document.documentElement.requestFullscreen === 'function' &&
+    typeof screen !== 'undefined' &&
+    typeof (screen.orientation as { lock?: unknown } | undefined)?.lock === 'function';
+  const goLandscape = async () => {
+    try {
+      await document.documentElement.requestFullscreen();
+      await (screen.orientation as unknown as { lock: (o: string) => Promise<void> }).lock('landscape');
+    } catch {
+      // 浏览器不允许时保持提示，让玩家手动横屏
+    }
+  };
+  return (
+    <div className="rotate-hint" role="note">
+      <div className="rotate-icon">⟳</div>
+      <b>请把手机横过来</b>
+      <div className="muted">牌桌是横向布局。如果转不过来，请先关闭系统的屏幕方向锁定。</div>
+      {canLock && (
+        <button className="primary" onClick={goLandscape}>
+          全屏并横屏
+        </button>
+      )}
+      {onExit && <button onClick={onExit}>先不玩了</button>}
     </div>
   );
 }

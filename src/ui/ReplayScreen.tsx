@@ -6,7 +6,7 @@ import { replay, viewFromSnapshot, type GameRecord, type ReplayResult, type Snap
 import { InferTag, RENEGADE_MODE_NAME } from './infer';
 import { SoundControl, SoundLayer } from './SoundControl';
 import type { PlayerPublic } from '../engine/types';
-import { CardView, SeatView } from './components';
+import { CardView, RotateHint, SeatView, SideToggle } from './components';
 import { dyingSeats, EffectsLayer, PlayZone } from './effects';
 import { TooltipHost } from './tooltip';
 import { isCrowded, tableSides } from './layout';
@@ -93,6 +93,7 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
   const last = data.snapshots.length - 1;
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [sideOpen, setSideOpen] = useState(false);
   const [speed, setSpeed] = useState(600);
   const tableRef = useRef<HTMLDivElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
@@ -225,7 +226,9 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
         <EffectsLayer log={log} container={tableRef} maxBatch={3} />
         <SoundLayer log={log} maxStep={2} />
       </div>
-      <aside className="side">
+      <RotateHint onExit={onBack} />
+      <SideToggle open={sideOpen} onToggle={() => setSideOpen((o) => !o)} />
+      <aside className={`side ${sideOpen ? 'open' : ''}`}>
         <div className="side-buttons">
           <button onClick={onBack}>返回</button>
         </div>

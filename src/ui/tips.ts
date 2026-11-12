@@ -40,7 +40,7 @@ export const TIPS: TipDef[] = [
   {
     id: 'start',
     title: '对局开始',
-    text: '{role} 点座位上的 ⓘ 可以查看武将详情；鼠标移到牌、装备、技能名上会显示说明。按 F1 或右上角「?」打开规则速查。',
+    text: '{role} 点座位上的 ⓘ 可以查看武将详情；鼠标移到牌、装备、技能名上会显示说明（手机上长按）。按 F1 或右上角「?」打开规则速查（手机上在右上角「☰」菜单里）。',
     when: (c) => c.view.turn > 0 && !!c.view.players[c.view.me].general,
   },
   {
