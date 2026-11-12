@@ -158,6 +158,8 @@ export const TUTORIAL_STEPS = BEATS.filter((b) => b.expect).length;
 /** 界面上要显示的内容 */
 export interface TutorialPage {
   kind: 'say' | 'do';
+  /** 讲解电脑刚做的事：气泡放到下方，不挡住牌桌中央的出牌区 */
+  low?: boolean;
   text: string;
   /** do：需要高亮的牌与座位 */
   expect?: Expect;
@@ -258,7 +260,7 @@ export class TutorialDirector {
 
     for (const text of b.say ?? []) {
       if (this.auto) continue;
-      this.show({ kind: 'say', text, done: this.done });
+      this.show({ kind: 'say', text, done: this.done, low: b.seat !== 0 || b.on === 'respond' });
       await new Promise<void>((r) => (this.waiting = r));
     }
     if (b.finish) {

@@ -239,7 +239,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
   );
 
   return (
-    <div className="game-layout">
+    <div className={`game-layout ${director ? 'tutorial-mode' : ''}`}>
       <div className={`table ${isCrowded(view.players.length) ? 'crowded' : ''}`} ref={tableRef}>
         {(['right', 'top', 'left'] as const).map((side) => (
           <div key={side} className={`seat-row seat-row-${side}`}>
@@ -488,7 +488,7 @@ function TutorialLayer({ director }: { director: TutorialDirector }) {
     .filter(Boolean)
     .join('\n');
   return (
-    <div className="tip-bubble tutorial-bubble" role="note">
+    <div className={`tip-bubble tutorial-bubble ${page.low ? 'low' : ''}`} role="note">
       <b>
         📖 新手教程 <span className="muted">{page.done}/{TUTORIAL_STEPS}</span>
       </b>

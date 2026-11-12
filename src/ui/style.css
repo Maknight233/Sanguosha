@@ -302,6 +302,11 @@ button[data-key]::after { content: attr(data-key); margin-left: 6px; padding: 0 
   50% { box-shadow: 0 0 0 3px #2f80ed, 0 0 16px 6px rgba(47,128,237,.85); }
 }
 
+.tutorial-bubble.low { bottom: 12px; }
+.tutorial-bubble.low::after { display: none; }
+/* 教学局关闭了武将技能，不显示技能文字 */
+.tutorial-mode .seat-skills { display: none; }
+
 /* ───────────── 手机适配 ─────────────
    牌桌只做横屏：矮屏（手机横屏）用紧凑布局，竖屏盖一层「请横屏」提示；触屏另有几条手感调整。 */
 .side-toggle, .side-scrim, .rotate-hint, .portrait-name, .side .speed { display: none; }
@@ -435,4 +440,8 @@ button[data-key]::after { content: attr(data-key); margin-left: 6px; padding: 0 
   .me-info { max-height: 106px; }
   .play-zone { min-height: 62px; }
   .play-zone .card.small { width: 36px; height: 50px; }
+}
+
+@media (max-height: 560px) {
+  .tutorial-bubble.low { bottom: 6px; }
 }
