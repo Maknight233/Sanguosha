@@ -10,6 +10,7 @@ const LEVEL_KEY = 'sanguo.level';
 const PLAYERS_KEY = 'sanguo.players';
 const INFER_KEY = 'sanguo.infer';
 const IMPORTED_KEY = 'sanguo.imported';
+const TUTORIAL_KEY = 'sanguo.tutorialAsked';
 
 export interface Tally {
   games: number;
@@ -151,3 +152,20 @@ export function saveInfer(on: boolean, store: KV = defaultStore()): void {
 export const recordPlayers = (rec: GameRecord) => rec.names?.length ?? 5;
 
 export const winRate = (t: Tally | undefined) => (t && t.games > 0 ? `${((t.wins / t.games) * 100).toFixed(0)}%` : '-');
+
+/** 是否已经问过「要不要看新手教程」。打过对局的老玩家视为已问过 */
+export function loadTutorialAsked(store: KV = defaultStore()): boolean {
+  try {
+    return store.getItem(TUTORIAL_KEY) === '1' || loadStats(store).total.games > 0;
+  } catch {
+    return true;
+  }
+}
+
+export function saveTutorialAsked(store: KV = defaultStore()): void {
+  try {
+    store.setItem(TUTORIAL_KEY, '1');
+  } catch {
+    /* 忽略 */
+  }
+}

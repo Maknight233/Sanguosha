@@ -293,6 +293,15 @@ button[data-key]::after { content: attr(data-key); margin-left: 6px; padding: 0 
 .card-kind { position: absolute; bottom: 2px; left: 0; right: 0; text-align: center; margin: 0; }
 .fx-recover .fx-float { color: #2f6b38; text-shadow: 0 0 3px #f7f0dc, 0 0 6px #f7f0dc; }
 
+/* 新手教程 */
+.tutorial-bubble { border-color: #2f80ed; background: #f3f8ff; }
+.tutorial-bubble::after { border-top-color: #2f80ed; }
+.tutorial-nudge { color: #c0392b; font-weight: bold; }
+@keyframes tutorial-glow {
+  0%, 100% { box-shadow: 0 0 0 2px #2f80ed, 0 0 6px 2px rgba(47,128,237,.5); }
+  50% { box-shadow: 0 0 0 3px #2f80ed, 0 0 16px 6px rgba(47,128,237,.85); }
+}
+
 /* ───────────── 手机适配 ─────────────
    牌桌只做横屏：矮屏（手机横屏）用紧凑布局，竖屏盖一层「请横屏」提示；触屏另有几条手感调整。 */
 .side-toggle, .side-scrim, .rotate-hint, .portrait-name, .side .speed { display: none; }

@@ -2,19 +2,27 @@ import { useState } from 'react';
 import { AI_LEVEL_NAME, type AiLevel } from '../ai/basic';
 import type { GameRecord } from '../engine/record';
 import { PLAYER_COUNTS, ROLE_TABLE, ROLE_NAME } from '../engine/game';
-import { loadLevel, loadPlayers, saveLevel, savePlayers } from './storage';
+import { loadLevel, loadPlayers, loadTutorialAsked, saveLevel, savePlayers, saveTutorialAsked } from './storage';
+import { Modal } from './components';
 import { GameScreen } from './GameScreen';
 import { RecordsScreen } from './RecordsScreen';
 import { ReplayScreen } from './ReplayScreen';
 import { RulesPage } from './RulesPage';
 
-type Screen = 'menu' | 'game' | 'rules' | 'records' | 'replay';
+type Screen = 'menu' | 'game' | 'tutorial' | 'rules' | 'records' | 'replay';
 
 export function App() {
   const [screen, setScreen] = useState<Screen>('menu');
   const [replaying, setReplaying] = useState<GameRecord | null>(null);
   const [level, setLevel] = useState<AiLevel>(loadLevel);
   const [players, setPlayers] = useState<number>(loadPlayers);
+  // 第一次打开时问一次要不要看教程；选哪个都不再问
+  const [askTutorial, setAskTutorial] = useState(() => !loadTutorialAsked());
+  const answerTutorial = (yes: boolean) => {
+    saveTutorialAsked();
+    setAskTutorial(false);
+    if (yes) setScreen('tutorial');
+  };
   const pickPlayers = (n: number) => {
     setPlayers(n);
     savePlayers(n);
@@ -27,7 +35,8 @@ export function App() {
     setReplaying(rec);
     setScreen('replay');
   };
-  if (screen === 'game') return <GameScreen onExit={() => setScreen('menu')} onReplay={openReplay} level={level} players={players} />;
+  if (screen === 'tutorial') return <GameScreen key="tutorial" tutorial onExit={() => setScreen('menu')} onTutorialPlay={() => setScreen('game')} />;
+  if (screen === 'game') return <GameScreen key="game" onExit={() => setScreen('menu')} onReplay={openReplay} level={level} players={players} />;
   if (screen === 'rules') return <RulesPage onBack={() => setScreen('menu')} />;
   if (screen === 'records') return <RecordsScreen onBack={() => setScreen('menu')} onReplay={openReplay} />;
   // 回放结束后回到对局记录
@@ -60,6 +69,9 @@ export function App() {
         <button className="primary big" onClick={() => setScreen('game')}>
           开始游戏
         </button>
+        <button className="big" onClick={() => setScreen('tutorial')}>
+          新手教程
+        </button>
         <button className="big" onClick={() => setScreen('records')}>
           对局记录
         </button>
@@ -67,6 +79,18 @@ export function App() {
           规则说明
         </button>
       </div>
+      {askTutorial && (
+        <Modal title="第一次来玩？" onClose={() => answerTutorial(false)}>
+          <p>要不要先打一局教学？大约 3 分钟，一步步教你出牌。</p>
+          <p className="muted">之后想看，主菜单里随时可以点「新手教程」。</p>
+          <div className="choice-row">
+            <button className="primary" onClick={() => answerTutorial(true)}>
+              开始教程
+            </button>
+            <button onClick={() => answerTutorial(false)}>不用，直接玩</button>
+          </div>
+        </Modal>
+      )}
     </main>
   );
 }

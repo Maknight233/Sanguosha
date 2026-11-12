@@ -17,6 +17,7 @@ import { loadTips, markSeen, pickTip, setTipsOff, tipText, type TipDef } from '.
 import { describeRequest, skillName } from './describe';
 import { dyingSeats, EffectsLayer, PlayZone } from './effects';
 import { isCrowded, seatNames, tableSides } from './layout';
+import { createTutorial, TUTORIAL_NAMES, TUTORIAL_STEPS, type TutorialDirector } from './tutorial';
 import { autoPickForRespond, autoTargetsForOption, autoTargetsForSkill, indexKey, SKILL_KEYS, useHotkeys, type KeyAction } from './hotkeys';
 
 const HUMAN = 0;
@@ -42,6 +43,10 @@ interface Session {
   answers: Answer[];
   level: AiLevel;
   names: string[];
+  /** 开始对局，返回胜者 */
+  run: () => Promise<Winner>;
+  /** 新手教学局的导演（普通对局没有） */
+  director?: TutorialDirector;
 }
 
 function createSession(delay: () => number, level: AiLevel, players: number, seed?: number): Session {
@@ -53,7 +58,15 @@ function createSession(delay: () => number, level: AiLevel, players: number, see
   const s = seed ?? Math.floor(Math.random() * 1e9);
   const controllers = [human, ...ais].map((c, seat) => new RecordingController(c, seat, answers));
   const game = new Game({ controllers, names, seed: s });
-  return { game, human, ais, gate, pauseOnInspect: true, seed: s, answers, level, names };
+  return { game, human, ais, gate, pauseOnInspect: true, seed: s, answers, level, names, run: () => game.start() };
+}
+
+/** 新手教学局：固定剧本，不记录回答 */
+function createTutorialSession(delay: () => number): Session {
+  const human = new HumanController();
+  const gate = new PauseGate();
+  const t = createTutorial(human, delay, gate);
+  return { game: t.game, human, ais: t.ais, gate, pauseOnInspect: true, seed: 1, answers: [], level: 'normal', names: TUTORIAL_NAMES, run: t.run, director: t.director };
 }
 
 /** 对局结束后生成记录 */
@@ -88,9 +101,13 @@ interface GameScreenProps {
   /** 测试用：固定 AI 停顿与随机种子 */
   aiDelay?: number;
   seed?: number;
+  /** 新手教学局：固定剧本，不保存记录 */
+  tutorial?: boolean;
+  /** 教程结束后点「开始正式对局」 */
+  onTutorialPlay?: () => void;
 }
 
-export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, aiDelay, seed }: GameScreenProps) {
+export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, aiDelay, seed, tutorial, onTutorialPlay }: GameScreenProps) {
   const [round, setRound] = useState(0);
   const [session, setSession] = useState<Session | null>(null);
   const [winner, setWinner] = useState<Winner | null>(null);
@@ -142,7 +159,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
   });
 
   useEffect(() => {
-    const s = createSession(() => speedRef.current, level, players, seed === undefined ? undefined : seed + round);
+    const s = tutorial ? createTutorialSession(() => speedRef.current) : createSession(() => speedRef.current, level, players, seed === undefined ? undefined : seed + round);
     setSession(s);
     setWinner(null);
     setRecord(null);
@@ -150,12 +167,15 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
     setHelp(false);
     setLogOpen(false);
     const unsubs = [s.game.subscribe(rerender), s.human.subscribe(rerender)];
-    // 只保存正常打完的局（中途重新开始/返回菜单的不保存）
-    s.game.start().then((w) => {
+    if (s.director) unsubs.push(s.director.subscribe(rerender));
+    // 只保存正常打完的局（中途重新开始/返回菜单的不保存）；教学局不保存
+    s.run().then((w) => {
       if (s.human.cancelled) return;
-      const rec = makeRecord(s, w);
-      saveGame(rec);
-      setRecord(rec);
+      if (!s.director) {
+        const rec = makeRecord(s, w);
+        saveGame(rec);
+        setRecord(rec);
+      }
       setWinner(w);
     }, (e) => console.error(e));
     return () => {
@@ -166,7 +186,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
   }, [round]);
 
   if (!session) return null;
-  const { game, human, gate, pauseOnInspect } = session;
+  const { game, human, gate, pauseOnInspect, director } = session;
   const openInspect = (seat: number) => {
     if (pauseOnInspect) gate.pause();
     setInspect(seat);
@@ -232,7 +252,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
           <div className="center-info">
             <div>第 {view.turn} 回合 · {view.phase === 'over' ? '游戏结束' : view.turn > 0 ? `${view.players[view.current].name} 的${PHASE_NAME[view.phase]}` : '选将'}</div>
             <div className="muted">
-              牌堆 {view.drawPileCount} 张 · 弃牌堆 {view.discardPileCount} 张 · AI {AI_LEVEL_NAME[level]}
+              牌堆 {view.drawPileCount} 张 · 弃牌堆 {view.discardPileCount} 张 · {director ? '新手教程' : `AI ${AI_LEVEL_NAME[level]}`}
             </div>
           </div>
           {dying.map((s) => (
@@ -260,7 +280,8 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
           pendingKey={pending ? JSON.stringify(pending.req) + game.log.length : null}
           result={winner ? (isWinner(game.players[HUMAN], winner) ? 'win' : 'lose') : null}
         />
-        {!winner && !panelOpen && <TipLayer key={`tip-${round}`} view={view} req={pending?.req ?? null} />}
+        {!winner && !panelOpen && !director && <TipLayer key={`tip-${round}`} view={view} req={pending?.req ?? null} />}
+        {director && !panelOpen && <TutorialLayer director={director} />}
       </div>
       <RotateHint onExit={onExit} />
       <SideToggle open={sideOpen} onToggle={() => setSideOpen((o) => !o)} />
@@ -294,6 +315,20 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
       )}
       {help && <HelpPanel players={view.players} me={HUMAN} paused={pauseOnInspect && !winner} onClose={closeHelp} />}
       <TooltipHost />
+      {director?.finished && !panelOpen && (
+        <Modal title="教程完成">
+          <p>你已经学会了出牌、装备、锦囊、响应和弃牌。接下来和电脑打一局完整的对局吧。</p>
+          <p className="muted">想再看一遍，可以在主菜单点「新手教程」。</p>
+          <div className="choice-row">
+            {onTutorialPlay && (
+              <button className="primary" onClick={onTutorialPlay}>
+                开始正式对局
+              </button>
+            )}
+            <button onClick={onExit}>返回菜单</button>
+          </div>
+        </Modal>
+      )}
       {winner && !logOpen && (
         <GameOver
           game={game}
@@ -425,6 +460,42 @@ function TipLayer({ view, req }: { view: GameView; req: Request | null }) {
           不再显示提示
         </button>
       </div>
+    </div>
+  );
+}
+
+// ───────────── 新手教程 ─────────────
+
+/** 教程气泡：讲解页点「下一步」继续；操作页显示提示，并高亮要点的牌和座位 */
+function TutorialLayer({ director }: { director: TutorialDirector }) {
+  const page = director.page;
+  if (!page) return null;
+  const e = page.expect;
+  const key = !e ? null : 'use' in e ? e.use : 'respond' in e ? e.respond : 'discard' in e ? e.discard : null;
+  const seat = e && 'use' in e ? e.target : undefined;
+  const glow = '{ animation: tutorial-glow 1.2s ease-in-out infinite; }';
+  const css = [
+    key && `.me-main .hand .card[data-card="${cardDef(key).name}"]:not(.disabled) ${glow}`,
+    seat !== undefined && `.seat[data-seat="${seat}"] ${glow}`,
+    e && 'end' in e && `.actions button[data-key="E"] ${glow}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return (
+    <div className="tip-bubble tutorial-bubble" role="note">
+      <b>
+        📖 新手教程 <span className="muted">{page.done}/{TUTORIAL_STEPS}</span>
+      </b>
+      <div>{page.kind === 'do' ? `👉 ${page.text}` : page.text}</div>
+      {page.nudge && <div className="tutorial-nudge">这一步请按提示操作。</div>}
+      {page.kind === 'say' && (
+        <div className="tip-actions">
+          <button className="primary" onClick={() => director.next()}>
+            下一步
+          </button>
+        </div>
+      )}
+      {css && <style>{css}</style>}
     </div>
   );
 }
