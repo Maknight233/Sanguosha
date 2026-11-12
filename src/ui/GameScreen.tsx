@@ -2,7 +2,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AI_LEVEL_NAME, BasicAI, observerOpinions, type AiLevel, type Opinion } from '../ai/basic';
 import { cardDef, cardText, isRed } from '../data/cards';
 import { generalDef } from '../data/generals';
-import { Game, isWinner, ROLE_NAME, WINNER_NAME } from '../engine/game';
+import { DRAW_GAME_PILES, Game, isWinner, ROLE_NAME, WINNER_NAME } from '../engine/game';
 import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOption, Winner } from '../engine/types';
 import { CardView, Equips, GeneralCard, Hp, InfoButton, JudgeZone, Modal, RotateHint, SeatView, SideToggle } from './components';
 import { HumanController, PacedController, PauseGate } from './controllers';
@@ -252,7 +252,13 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
           <div className="center-info">
             <div>第 {view.turn} 回合 · {view.phase === 'over' ? '游戏结束' : view.turn > 0 ? `${view.players[view.current].name} 的${PHASE_NAME[view.phase]}` : '选将'}</div>
             <div className="muted">
-              牌堆 {view.drawPileCount} 张 · 弃牌堆 {view.discardPileCount} 张 · {director ? '新手教程' : `AI ${AI_LEVEL_NAME[level]}`}
+              牌堆 {view.drawPileCount} 张
+              {view.pileExhausted > 0 && (
+                <span title={`牌堆第 ${DRAW_GAME_PILES} 次被摸光时平局`}>
+                  （已摸光 {view.pileExhausted}/{DRAW_GAME_PILES} 次）
+                </span>
+              )}{' '}
+              · 弃牌堆 {view.discardPileCount} 张 · {director ? '新手教程' : `AI ${AI_LEVEL_NAME[level]}`}
             </div>
           </div>
           {dying.map((s) => (
@@ -278,7 +284,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
           key={`sound-${round}`}
           log={game.log}
           pendingKey={pending ? JSON.stringify(pending.req) + game.log.length : null}
-          result={winner ? (isWinner(game.players[HUMAN], winner) ? 'win' : 'lose') : null}
+          result={winner && winner !== 'draw' ? (isWinner(game.players[HUMAN], winner) ? 'win' : 'lose') : null}
         />
         {!winner && !panelOpen && !director && <TipLayer key={`tip-${round}`} view={view} req={pending?.req ?? null} />}
         {director && !panelOpen && <TutorialLayer director={director} />}
@@ -935,9 +941,17 @@ function GameOver({
   const me = game.players[HUMAN];
   const won = isWinner(me, winner);
   return (
-    <Modal title={won ? '胜利！' : '失败'}>
+    <Modal title={winner === 'draw' ? '平局' : won ? '胜利！' : '失败'}>
       <p>
-        <b>{WINNER_NAME[winner]}</b>获胜，共 {game.turn} 回合。
+        {winner === 'draw' ? (
+          <>
+            牌堆第 {DRAW_GAME_PILES} 次被摸光，<b>平局</b>，共 {game.turn} 回合。不计入战绩。
+          </>
+        ) : (
+          <>
+            <b>{WINNER_NAME[winner]}</b>获胜，共 {game.turn} 回合。
+          </>
+        )}
       </p>
       <table>
         <thead>

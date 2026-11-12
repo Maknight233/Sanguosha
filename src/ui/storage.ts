@@ -69,6 +69,11 @@ const bump = (t: Tally | undefined, won: boolean): Tally => ({ games: (t?.games 
 export function saveGame(rec: GameRecord, store: KV = defaultStore()): void {
   const records = [rec, ...loadRecords(store).filter((r) => r.id !== rec.id)].slice(0, MAX_RECORDS);
   const stats = loadStats(store);
+  // 平局只留记录，不计入战绩
+  if (rec.winner === 'draw') {
+    store.setItem(RECORDS_KEY, JSON.stringify(records));
+    return;
+  }
   stats.total = bump(stats.total, rec.won);
   stats.byRole[rec.role] = bump(stats.byRole[rec.role], rec.won);
   stats.byGeneral[rec.general] = bump(stats.byGeneral[rec.general], rec.won);

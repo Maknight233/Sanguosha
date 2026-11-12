@@ -6,7 +6,7 @@ import { Game } from './game';
 import type { Card, Controller, GameView, JudgeCard, LogEntry, Phase, Player, Request, Response, Role, Winner } from './types';
 
 /** 规则改动导致旧记录无法重现时递增 */
-export const RECORD_VERSION = 9;
+export const RECORD_VERSION = 10;
 
 export interface Answer {
   seat: number;
@@ -100,6 +100,7 @@ export interface Snapshot {
   hostility?: number[][];
   help?: number[][];
   deathOrder?: number[];
+  pileExhausted?: number;
 }
 
 export interface ReplayResult {
@@ -138,6 +139,7 @@ function snapshot(game: Game): Snapshot {
     hostility: game.hostility.map((r) => [...r]),
     help: game.help.map((r) => [...r]),
     deathOrder: [...game.deathOrder],
+    pileExhausted: game.pileExhausted,
   };
 }
 
@@ -157,6 +159,7 @@ export function viewFromSnapshot(snap: Snapshot, seat: number): GameView {
     hostility: snap.hostility ?? zero(),
     help: snap.help ?? zero(),
     deathOrder: snap.deathOrder ?? [],
+    pileExhausted: snap.pileExhausted ?? 0,
     players: snap.players.map((p) => ({
       seat: p.seat,
       name: p.name,

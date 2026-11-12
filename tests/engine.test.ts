@@ -267,7 +267,7 @@ describe('随机对局压力测试', () => {
   }, 60000);
 
   it('300 局随机对局都能正常结束，牌数守恒', async () => {
-    const tally = { lord: 0, rebel: 0, renegade: 0 };
+    const tally = { lord: 0, rebel: 0, renegade: 0, draw: 0 };
     for (let seed = 1; seed <= 300; seed++) {
       const game = new Game({
         controllers: [0, 1, 2, 3, 4].map((i) => new RandomController(seed * 10 + i)),
@@ -282,8 +282,10 @@ describe('随机对局压力测试', () => {
       });
       const winner = await game.start();
       tally[winner]++;
-      expect(game.checkVictory()).toBe(winner);
+      // 平局（牌堆被摸光 7 次）时没有任何一方达成胜利条件
+      expect(game.checkVictory()).toBe(winner === 'draw' ? null : winner);
     }
-    expect(tally.lord + tally.rebel + tally.renegade).toBe(300);
+    expect(tally.lord + tally.rebel + tally.renegade + tally.draw).toBe(300);
+    expect(tally.draw).toBeLessThan(10);
   }, 60000);
 });

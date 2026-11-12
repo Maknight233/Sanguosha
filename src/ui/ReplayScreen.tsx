@@ -234,7 +234,8 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
         </div>
         <SoundControl />
         <div className="replay-summary">
-          <b>{WINNER_NAME[record.winner]}</b>获胜 · 共 {record.turns} 回合 · 你是 {ROLE_NAME[record.role]}（{generalDef(record.general).name}）
+          <b>{WINNER_NAME[record.winner]}</b>
+          {record.winner === 'draw' ? '' : '获胜'} · 共 {record.turns} 回合 · 你是 {ROLE_NAME[record.role]}（{generalDef(record.general).name}）
           {data.error && <div className="red">{data.error}</div>}
         </div>
         <div className="replay-perspective">

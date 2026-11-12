@@ -33,7 +33,11 @@ export const WINNER_NAME: Record<Winner, string> = {
   lord: '主公与忠臣',
   rebel: '反贼',
   renegade: '内奸',
+  draw: '平局',
 };
+
+/** 牌堆第几次被摸光时判平局（防止没人动手的对局无限拖下去） */
+export const DRAW_GAME_PILES = 7;
 
 /**
  * 各人数的身份配置：主公方与反贼人数相等时最平衡，所以 6、8 人用 2 名内奸
@@ -51,6 +55,7 @@ export const LORD_BONUS: Record<number, number> = { 5: 1, 6: 1, 7: 0, 8: 0 };
 /** 某角色是否属于获胜方（内奸获胜时只有存活的那名内奸算赢） */
 export function isWinner(p: Pick<Player, 'role' | 'alive'>, winner: Winner): boolean {
   if (winner === 'lord') return p.role === 'lord' || p.role === 'loyalist';
+  if (winner === 'draw') return false;
   if (winner === 'renegade') return p.role === 'renegade' && p.alive;
   return p.role === winner;
 }
@@ -217,6 +222,8 @@ export class Game {
   help: number[][] = [];
   /** 阵亡顺序 */
   deathOrder: number[] = [];
+  /** 牌堆已被摸光的次数 */
+  pileExhausted = 0;
   /** 本回合已发动的限一次技能 */
   skillUsed = new Set<string>();
   /** 张辽【先登】本回合是否生效 */
@@ -415,7 +422,7 @@ export class Game {
       if (e instanceof GameOver) {
         this.winner = e.winner;
         this.phase = 'over';
-        this.addLog(`游戏结束，${WINNER_NAME[e.winner]}获胜！`);
+        this.addLog(e.winner === 'draw' ? '游戏结束，平局！' : `游戏结束，${WINNER_NAME[e.winner]}获胜！`);
         return e.winner;
       }
       throw e;
@@ -689,9 +696,14 @@ export class Game {
 
   // ───────────── 牌堆操作 ─────────────
 
-  /** 牌堆不足 n 张时，把弃牌堆洗匀后垫在牌堆底 */
+  /** 牌堆不足 n 张时，把弃牌堆洗匀后垫在牌堆底；牌堆第 DRAW_GAME_PILES 次被摸光时平局 */
   ensureDrawPile(n: number): void {
     if (this.drawPile.length >= n || this.discardPile.length === 0) return;
+    this.pileExhausted++;
+    if (this.pileExhausted >= DRAW_GAME_PILES) {
+      this.addLog(`牌堆第 ${this.pileExhausted} 次被摸光。`);
+      throw new GameOver('draw');
+    }
     this.drawPile = [...this.rng.shuffle(this.discardPile), ...this.drawPile];
     this.discardPile = [];
     this.addLog('弃牌堆洗入牌堆。');
@@ -1927,6 +1939,7 @@ export class Game {
       hostility: this.hostility.map((row) => [...row]),
       help: this.help.map((row) => [...row]),
       deathOrder: [...this.deathOrder],
+      pileExhausted: this.pileExhausted,
       players: this.players.map((p) => ({
         seat: p.seat,
         name: p.name,

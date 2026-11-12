@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { DRAW_PER_TURN, ROLE_NAME, YINREN_TEXT } from '../engine/game';
+import { DRAW_GAME_PILES, DRAW_PER_TURN, ROLE_NAME, YINREN_TEXT } from '../engine/game';
 import { FACTION_NAME, generalDef } from '../data/generals';
 import type { PlayerPublic } from '../engine/types';
 import { Modal } from './components';
@@ -72,6 +72,7 @@ export const RULE_TOPICS: RuleTopic[] = [
           </li>
         </ul>
         <p>奖惩：击杀反贼者摸 3 张牌；主公误杀忠臣，弃置所有手牌和装备。</p>
+        <p>平局：牌堆摸完时会把弃牌堆洗回牌堆；牌堆第 {DRAW_GAME_PILES} 次被摸光时仍未分出胜负，本局按平局处理，不计入战绩。</p>
       </>
     ),
   },

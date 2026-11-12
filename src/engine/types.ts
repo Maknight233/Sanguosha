@@ -5,7 +5,8 @@ export type EquipSlot = 'weapon' | 'armor' | 'horseMinus' | 'horsePlus';
 export type CardKind = 'basic' | 'trick' | 'equip';
 export type Phase = 'setup' | 'prepare' | 'draw' | 'play' | 'discard' | 'end' | 'over';
 /** 获胜阵营：lord 表示主公与忠臣 */
-export type Winner = 'lord' | 'rebel' | 'renegade';
+/** draw：平局（牌堆被摸光的次数达到上限） */
+export type Winner = 'lord' | 'rebel' | 'renegade' | 'draw';
 
 export interface Card {
   id: number;
@@ -78,6 +79,8 @@ export interface GameView {
   help: number[][];
   /** 阵亡顺序（座位号），公开信息 */
   deathOrder: number[];
+  /** 牌堆已被摸光的次数（达到 DRAW_GAME_PILES 时平局） */
+  pileExhausted: number;
 }
 
 export interface PlayOption {

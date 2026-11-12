@@ -246,7 +246,7 @@ function RecordTable({ records, actions, imported }: { records: GameRecord[]; ac
             <td>{recordPlayers(r)}</td>
             <td>{levelName(r.level)}</td>
             <td className={r.won ? 'win' : 'muted'}>
-              {r.won ? '胜' : '负'}（{WINNER_NAME[r.winner]}获胜）
+              {r.winner === 'draw' ? '平局' : `${r.won ? '胜' : '负'}（${WINNER_NAME[r.winner]}获胜）`}
             </td>
             <td>{r.turns}</td>
             <td className="record-actions">{actions(r)}</td>

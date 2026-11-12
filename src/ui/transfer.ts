@@ -34,7 +34,7 @@ export function backupFile(records: GameRecord[], stats: Stats, now = Date.now()
 
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 const ROLES = ['lord', 'loyalist', 'rebel', 'renegade'];
-const WINNERS = ['lord', 'rebel', 'renegade'];
+const WINNERS = ['lord', 'rebel', 'renegade', 'draw'];
 
 /** 检查记录的结构是否完整（不检查能否重现，回放时会提示） */
 export function validRecord(r: unknown): r is GameRecord {
