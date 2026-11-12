@@ -21,6 +21,10 @@
 - **上手友好**：新手情境提示、规则速查、悬浮说明卡、武将详情、快捷键
 - **全中文界面**，洗牌使用带种子的随机数，任何一局都能完整重现
 
+## 在线试玩
+
+<https://maknight233.github.io/Sanguosha/>（推送到 `main` 后由 GitHub Actions 自动测试、构建并发布）
+
 ## 快速开始
 
 需要 [Node.js](https://nodejs.org/) 20 或更高版本。
