@@ -86,6 +86,7 @@ npm run dev
 | `scripts/disguise.ts` | 读局（旁观者视角）的身份识别准确率 |
 | `scripts/comeback.ts` | 新卡牌对胜率与翻盘率的影响 |
 | `scripts/diag-suspicion.ts`、`scripts/diag-renegade.ts` | 内奸嫌疑判断与内奸死因诊断 |
+| `scripts/diag-stall.ts` | 长局 / 僵持诊断：各人数的回合数分布与超时局面（加 `passive` 模拟一名不出牌的玩家） |
 
 ## 项目结构
 

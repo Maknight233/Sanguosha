@@ -217,6 +217,8 @@ export class Game {
   help: number[][] = [];
   /** 阵亡顺序 */
   deathOrder: number[] = [];
+  /** 上一次有人受到伤害的回合（见 GameView.quietTurns） */
+  lastDamageTurn = 0;
   /** 本回合已发动的限一次技能 */
   skillUsed = new Set<string>();
   /** 张辽【先登】本回合是否生效 */
@@ -299,6 +301,7 @@ export class Game {
       this.resolutionStart = false;
       event = { ...event, start: true };
     }
+    if (event?.type === 'damage') this.lastDamageTurn = this.turn;
     this.log.push(event ? { turn: this.turn, text, event } : { turn: this.turn, text });
     this.emit();
   }
@@ -1927,6 +1930,7 @@ export class Game {
       hostility: this.hostility.map((row) => [...row]),
       help: this.help.map((row) => [...row]),
       deathOrder: [...this.deathOrder],
+      quietTurns: this.turn - this.lastDamageTurn,
       players: this.players.map((p) => ({
         seat: p.seat,
         name: p.name,

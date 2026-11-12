@@ -76,6 +76,16 @@ export const SUSPICION_TUNING = {
   /** 嫌疑分达到此值才认定为疑似内奸（1.0 约等于两边各一次完整的行为） */
   threshold: 1.0,
 };
+/** 按人数排除参数（见 Brain.cornered；模拟脚本可修改来对比） */
+export const ELIMINATION_TUNING = {
+  enabled: true,
+  /** 被认定的人与其余未知者的倾向分至少相差这么多 */
+  gap: 0.2,
+  /** 连续这么多轮没有人受到伤害才算僵局（之后对已经动过手的目标继续打） */
+  quietRounds: 2,
+  /** 僵局持续这么多轮后不再要求分差：倾向分最低的（含并列）一律当作敌人 */
+  desperateRounds: 4,
+};
 /** AI 伪装参数（普通难度；模拟脚本可修改来对比） */
 export const DISGUISE_TUNING = {
   enabled: true,
@@ -346,11 +356,12 @@ class Brain {
     switch (this.me.role) {
       // 疑似内奸：不当队友（不救、不给牌、不替他挡锦囊），但原本是敌人的仍是敌人
       case 'lord':
-      case 'loyalist':
-        if (seat === lord) return 'friend';
-        if (this.looksRebel(seat)) return 'enemy';
-        if (this.looksLoyal(seat)) return this.suspectedRenegade(seat) ? 'neutral' : 'friend';
-        return attacksMe ? 'enemy' : 'neutral';
+      case 'loyalist': {
+        const r = this.lordSideRelation(seat);
+        // 久僵不下时，连「看起来像忠臣」的人也要怀疑（seat 为主公时 cornered 恒为 false）
+        if (r === 'neutral') return this.cornered(seat, false) ? 'enemy' : r;
+        return r === 'friend' && this.cornered(seat, true) ? 'enemy' : r;
+      }
       case 'rebel':
         if (seat === lord) return 'enemy';
         if (this.looksLoyal(seat)) return 'enemy';
@@ -383,6 +394,40 @@ class Brain {
       default:
         return 'neutral';
     }
+  }
+
+  /** 主公 / 忠臣只凭行为对某人的判断 */
+  private lordSideRelation(seat: number): Relation {
+    if (seat === this.lord.seat) return 'friend';
+    // 已亮明身份的内奸：反贼全灭后就是最后的敌人
+    if (this.view.players[seat].role === 'renegade' && this.aliveCounts().rebels === 0) return 'enemy';
+    if (this.looksRebel(seat)) return 'enemy';
+    if (this.looksLoyal(seat)) return this.suspectedRenegade(seat) ? 'neutral' : 'friend';
+    return this.hostile(seat, this.me.seat) ? 'enemy' : 'neutral';
+  }
+
+  /**
+   * 按人数排除（主公 / 忠臣）：僵局中场上看不出任何敌人、但按身份表敌人一定还活着时，
+   * 未知身份者中倾向分最低的那几个就是敌人——一直不动手的人不能靠「没有敌对行为」躲到最后。
+   * 只有当他们的倾向分明显低于其余的人（疑似忠臣）时才认定，分不出高低就继续观望。
+   */
+  private cornered(seat: number, desperateOnly: boolean): boolean {
+    if (!ELIMINATION_TUNING.enabled || this.observer) return false;
+    const unknown = this.aliveOthers().filter((p) => p.role === null);
+    if (!unknown.some((p) => p.seat === seat)) return false;
+    const alive = this.aliveOthers().length + 1;
+    const stalled = this.view.quietTurns >= alive * ELIMINATION_TUNING.quietRounds;
+    if (!stalled && !this.hostile(this.me.seat, seat) && !this.hostile(this.lord.seat, seat)) return false;
+    if (this.aliveOthers().some((p) => this.lordSideRelation(p.seat) === 'enemy')) return false;
+    const friends = this.aliveCounts().loyalists - (this.me.role === 'loyalist' ? 1 : 0);
+    const enemies = unknown.length - friends;
+    if (enemies <= 0) return false;
+    const sorted = unknown.map((p) => this.lean(p.seat)).sort((a, b) => a - b);
+    const mine = this.lean(seat);
+    if (mine > sorted[enemies - 1]) return false;
+    if (this.view.quietTurns >= alive * ELIMINATION_TUNING.desperateRounds) return true;
+    if (desperateOnly) return false;
+    return friends === 0 || sorted[enemies] - sorted[enemies - 1] >= ELIMINATION_TUNING.gap;
   }
 
   /**

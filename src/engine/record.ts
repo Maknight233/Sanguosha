@@ -100,6 +100,7 @@ export interface Snapshot {
   hostility?: number[][];
   help?: number[][];
   deathOrder?: number[];
+  quietTurns?: number;
 }
 
 export interface ReplayResult {
@@ -138,6 +139,7 @@ function snapshot(game: Game): Snapshot {
     hostility: game.hostility.map((r) => [...r]),
     help: game.help.map((r) => [...r]),
     deathOrder: [...game.deathOrder],
+    quietTurns: game.turn - game.lastDamageTurn,
   };
 }
 
@@ -157,6 +159,7 @@ export function viewFromSnapshot(snap: Snapshot, seat: number): GameView {
     hostility: snap.hostility ?? zero(),
     help: snap.help ?? zero(),
     deathOrder: snap.deathOrder ?? [],
+    quietTurns: snap.quietTurns ?? 0,
     players: snap.players.map((p) => ({
       seat: p.seat,
       name: p.name,
