@@ -2,11 +2,11 @@
  * 对局记录与回放：引擎是确定性的——同样的随机种子 + 同样的每一步回答 = 同一局。
  * 所以只记录种子和全部回答（人类和 AI 都记，AI 代码以后改了旧记录也能看），回放时重跑一遍。
  */
-import { Game } from './game';
+import { Game, type Resignation } from './game';
 import type { Card, Controller, GameView, JudgeCard, LogEntry, Phase, Player, Request, Response, Role, Winner } from './types';
 
 /** 规则改动导致旧记录无法重现时递增 */
-export const RECORD_VERSION = 11;
+export const RECORD_VERSION = 12;
 
 export interface Answer {
   seat: number;
@@ -33,6 +33,8 @@ export interface GameRecord {
   level?: string;
   /** 原局日志条数，用于校验回放是否一致 */
   logLength: number;
+  /** 2v2 认输 */
+  resign?: Resignation;
 }
 
 /** 包装控制器：把每次回答按顺序写入共享列表 */
@@ -187,6 +189,7 @@ export async function replay(rec: GameRecord): Promise<ReplayResult> {
     names: rec.names,
     seed: rec.seed,
     maxTurns: rec.turns + 5,
+    resign: rec.resign,
   });
   const snapshots: Snapshot[] = [];
   game.subscribe(() => {

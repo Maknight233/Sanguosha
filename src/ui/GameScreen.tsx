@@ -2,9 +2,9 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AI_LEVEL_NAME, BasicAI, observerOpinions, type AiLevel, type Opinion } from '../ai/basic';
 import { cardDef, cardText, isRed } from '../data/cards';
 import { generalDef } from '../data/generals';
-import { DRAW_GAME_PILES, Game, isDuel, isWinner, ROLE_NAME, roleLabel, winnerLabel } from '../engine/game';
+import { DRAW_GAME_PILES, Game, isDuel, isTeam, isVersus, isWinner, ROLE_NAME, roleLabel, winnerLabel } from '../engine/game';
 import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOption, Winner } from '../engine/types';
-import { CardView, Equips, GeneralCard, Hp, InfoButton, JudgeZone, Modal, RotateHint, SeatView, SideToggle } from './components';
+import { CardView, Equips, GeneralCard, Hp, InfoButton, JudgeZone, Modal, roleBadgeClass, RotateHint, SeatView, SideToggle } from './components';
 import { HumanController, PacedController, PauseGate } from './controllers';
 import { RECORD_VERSION, RecordingController, type Answer, type GameRecord } from '../engine/record';
 import { loadInfer, saveGame, saveInfer } from './storage';
@@ -87,6 +87,7 @@ function makeRecord(s: Session, winner: Winner): GameRecord {
     won: isWinner(me, winner),
     level: s.level,
     logLength: s.game.log.length,
+    ...(s.game.resigned ? { resign: s.game.resigned } : {}),
   };
 }
 
@@ -111,6 +112,8 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
   const [round, setRound] = useState(0);
   const [session, setSession] = useState<Session | null>(null);
   const [winner, setWinner] = useState<Winner | null>(null);
+  /** 2v2 认输确认框 */
+  const [confirmResign, setConfirmResign] = useState(false);
   const [record, setRecord] = useState<GameRecord | null>(null);
   const [speed, setSpeed] = useState(aiDelay ?? 600);
   const speedRef = useRef(speed);
@@ -162,6 +165,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
     const s = tutorial ? createTutorialSession(() => speedRef.current) : createSession(() => speedRef.current, level, players, seed === undefined ? undefined : seed + round);
     setSession(s);
     setWinner(null);
+    setConfirmResign(false);
     setRecord(null);
     setInspect(null);
     setHelp(false);
@@ -305,6 +309,17 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
         <button className="log-open" onClick={openLog} title="查看出牌记录（L）；单机时游戏暂停" data-key="L">
           出牌记录
         </button>
+        {!winner && game.canResign(HUMAN) && (
+          <button
+            className="resign-btn"
+            onClick={() => {
+              gate.pause();
+              setConfirmResign(true);
+            }}
+          >
+            认输
+          </button>
+        )}
         <SoundControl />
         {speedControl}
       </aside>
@@ -332,6 +347,33 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
               </button>
             )}
             <button onClick={onExit}>返回菜单</button>
+          </div>
+        </Modal>
+      )}
+      {confirmResign && !winner && (
+        <Modal title="认输">
+          <p>你这一队已有一人阵亡。认输后本局立即结束，计为失败。</p>
+          <div className="choice-row">
+            <button
+              className="primary"
+              onClick={() => {
+                setConfirmResign(false);
+                game.resign(HUMAN);
+                gate.resume();
+                // 正在等你操作时，随便交一个回答让引擎继续（认输在回答后立即生效）
+                human.answer(null);
+              }}
+            >
+              确定认输
+            </button>
+            <button
+              onClick={() => {
+                setConfirmResign(false);
+                gate.resume();
+              }}
+            >
+              继续打
+            </button>
           </div>
         </Modal>
       )}
@@ -662,7 +704,7 @@ function PlayerArea({
       <div className="me-info">
         <div>
           <b>{g?.name ?? '选将中'}</b>
-          {me.role && <span className={`role-badge role-${me.role}`}>{roleLabel(me.role, view.players.length)}</span>}
+          {me.role && <span className={roleBadgeClass(me.role, view.players.length)}>{roleLabel(me.role, view.players.length)}</span>}
           <InfoButton onClick={onInfo} />
         </div>
         {g && <Hp hp={Math.max(me.hp, 0)} maxHp={me.maxHp} />}
@@ -820,6 +862,15 @@ function RequestModal({
                 {amLord ? '（第一回合少摸 1 张牌）' : ''}。
                 {!amLord && lord.general && `对手选择了【${generalDef(lord.general).name}】。`}
               </>
+            ) : isTeam(view.players.length) ? (
+              <>
+                2v2 组队，你在 <b>{roleLabel(view.players[view.me].role!, 4)}</b>
+                {amLord ? '，第一个行动（第一回合少摸 1 张牌）' : ''}。
+                {view.players
+                  .filter((p) => p.general && p.seat !== view.me)
+                  .map((p) => `${p.name}（${(p.role !== 'rebel') === (view.players[view.me].role !== 'rebel') ? '队友' : '对手'}）选择了【${generalDef(p.general).name}】。`)
+                  .join('')}
+              </>
             ) : (
               <>
                 你的身份是 <b>{ROLE_NAME[view.players[view.me].role!]}</b>。
@@ -829,7 +880,7 @@ function RequestModal({
           </p>
           <div className="general-grid">
             {req.options.map((g, i) => (
-              <GeneralCard key={g} general={g} lord={amLord && !isDuel(view.players.length)} hotkey={hk(i)} onClick={() => answer(g)} />
+              <GeneralCard key={g} general={g} lord={amLord && !isVersus(view.players.length)} hotkey={hk(i)} onClick={() => answer(g)} />
             ))}
           </div>
         </Modal>
@@ -960,6 +1011,7 @@ function GameOver({
           </>
         ) : (
           <>
+            {game.resigned && `${game.resigned.seat === HUMAN ? '你' : game.players[game.resigned.seat].name}认输，`}
             <b>{winnerLabel(winner, game.players.length)}</b>获胜，共 {game.turn} 回合。
           </>
         )}

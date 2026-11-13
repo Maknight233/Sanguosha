@@ -1,8 +1,8 @@
 import { cardDef } from '../data/cards';
 import { FACTION_NAME, generalDef } from '../data/generals';
-import { isDuel, roleLabel } from '../engine/game';
+import { isVersus, roleLabel } from '../engine/game';
 import type { EquipSlot, LogEntry, LogEvent, PlayerPublic } from '../engine/types';
-import { CardView, Hp, Modal } from './components';
+import { CardView, Hp, Modal, roleBadgeClass } from './components';
 
 const SLOT_ORDER: EquipSlot[] = ['weapon', 'armor', 'horseMinus', 'horsePlus'];
 const SLOT_NAME: Record<EquipSlot, string> = { weapon: '武器', armor: '防具', horseMinus: '-1马', horsePlus: '+1马' };
@@ -10,7 +10,7 @@ const SLOT_NAME: Record<EquipSlot, string> = { weapon: '武器', armor: '防具'
 /** 武将详情面板 */
 export function GeneralPanel({ p, players = 5, isMe, paused, onClose }: { p: PlayerPublic; players?: number; isMe: boolean; paused: boolean; onClose: () => void }) {
   const g = p.general ? generalDef(p.general) : null;
-  const isLord = p.role === 'lord' && !isDuel(players);
+  const isLord = p.role === 'lord' && !isVersus(players);
   const equips = SLOT_ORDER.filter((s) => p.equips[s]);
   return (
     <Modal title={`${p.name}${g ? ` · ${g.name}` : ''}`} onClose={onClose}>
@@ -29,7 +29,7 @@ export function GeneralPanel({ p, players = 5, isMe, paused, onClose }: { p: Pla
               <span>手牌 {p.handCount} 张</span>
               <span>
                 身份：
-                <span className={`role-badge role-${p.role ?? 'unknown'}`}>{p.role ? roleLabel(p.role, players) : '未知'}</span>
+                <span className={roleBadgeClass(p.role, players)}>{p.role ? roleLabel(p.role, players) : '未知'}</span>
               </span>
               {!p.alive && <b className="red">已阵亡</b>}
             </div>

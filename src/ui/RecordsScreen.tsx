@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { AI_LEVEL_NAME, type AiLevel } from '../ai/basic';
 import { generalDef } from '../data/generals';
-import { DUEL_PLAYERS, PLAYER_COUNTS, ROLE_NAME, roleLabel, winnerLabel } from '../engine/game';
+import { DUEL_PLAYERS, PLAYER_COUNTS, TEAM_PLAYERS, ROLE_NAME, roleLabel, winnerLabel } from '../engine/game';
 import type { GameRecord } from '../engine/record';
 import type { Role } from '../engine/types';
 import { addImported, clearStats, loadImported, loadRecords, loadStats, MAX_RECORDS, recordPlayers, removeImported, replaceAll, winRate, type Stats } from './storage';
@@ -9,7 +9,7 @@ import { backupFile, download, parseImport, recordFile, stamp } from './transfer
 
 const ROLES: Role[] = ['lord', 'loyalist', 'rebel', 'renegade'];
 const LEVELS = Object.keys(AI_LEVEL_NAME) as AiLevel[];
-const playersLabel = (n: number) => (n === DUEL_PLAYERS ? '1v1' : `${n} 人`);
+const playersLabel = (n: number) => (n === DUEL_PLAYERS ? '1v1' : n === TEAM_PLAYERS ? '2v2' : `${n} 人`);
 const levelName = (l?: string) => AI_LEVEL_NAME[(l ?? 'normal') as AiLevel] ?? l;
 
 function formatDate(ms: number): string {
@@ -135,7 +135,7 @@ export function RecordsScreen({ onBack, onReplay }: { onBack: () => void; onRepl
                 </tr>
               </thead>
               <tbody>
-                {[...PLAYER_COUNTS, DUEL_PLAYERS].map((n) => (
+                {[...PLAYER_COUNTS, DUEL_PLAYERS, TEAM_PLAYERS].map((n) => (
                   <tr key={n}>
                     <td>{playersLabel(n)}</td>
                     <td>{stats.byPlayers?.[n]?.games ?? 0}</td>

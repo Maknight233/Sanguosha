@@ -448,3 +448,4 @@ button[data-key]::after { content: attr(data-key); margin-left: 6px; padding: 0 
   .tutorial-bubble.low { bottom: 6px; }
 }
 .duel-note { margin-left: auto; font-size: 11px; }
+.resign-btn { margin: 0 8px 8px; }

@@ -1,5 +1,5 @@
 import { BASIC_KEYS, cardDef, isRed, TIANLEI_DAMAGE, tianleiHit } from '../data/cards';
-import { ROLE_TABLE, seatDistance, YINREN_DAMAGE } from '../engine/game';
+import { isVersus, ROLE_TABLE, seatDistance, YINREN_DAMAGE } from '../engine/game';
 import type {
   Card,
   CardPick,
@@ -329,16 +329,22 @@ class Brain {
 
   /** 潜伏型反贼：开局几轮内不暴露，有人阵亡、主公体力低、自己濒危或轮数到了就结束 */
   lurking(): boolean {
-    // 1v1 没有身份可隐藏
-    if (!DISGUISE_TUNING.enabled || this.level === 'easy' || this.observer || this.me.role !== 'rebel' || this.view.players.length === 2) return false;
+    // 1v1、2v2 没有身份可隐藏
+    if (!DISGUISE_TUNING.enabled || this.level === 'easy' || this.observer || this.me.role !== 'rebel' || this.versus) return false;
     const v = this.view;
     const n = v.players.length;
     const lurker = hash(`lurk|${this.me.seat}|${v.players.map((p) => p.general).join(',')}`) % 1000 < DISGUISE_TUNING.rebelLurkChance * 1000;
     return lurker && v.deathOrder.length === 0 && this.lord.hp > DISGUISE_TUNING.lurkLordHp && this.me.hp > 1 && v.turn <= DISGUISE_TUNING.lurkRounds * n;
   }
 
+  /** 对战模式（1v1、2v2）：身份全部公开 */
+  private get versus(): boolean {
+    return isVersus(this.view.players.length);
+  }
+
   private baseRelation(seat: number): Relation {
     const known = this.view.players[seat].role;
+    if (known !== null && this.versus) return this.relationToRole(known, seat);
     if (known === null) {
       // 未知身份者如果只可能是某一类，直接按该身份判断
       const pool = this.unknownRoles();
@@ -495,8 +501,8 @@ class Brain {
       if (seats.length === 0) return undefined;
       return seats[hash(`${this.view.turn}|${this.me.seat}|${this.hand.length}|${seats.join(',')}`) % seats.length];
     }
-    // 反贼集火主公
-    if (this.me.role === 'rebel' && seats.includes(this.lord.seat)) return this.lord.seat;
+    // 反贼集火主公（2v2 要打死两人，按体力挑）
+    if (this.me.role === 'rebel' && !this.versus && seats.includes(this.lord.seat)) return this.lord.seat;
     return [...seats].sort((a, b) => this.view.players[a].hp - this.view.players[b].hp)[0];
   }
 

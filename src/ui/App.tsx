@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AI_LEVEL_NAME, type AiLevel } from '../ai/basic';
 import type { GameRecord } from '../engine/record';
-import { DUEL_PLAYERS, isDuel, PLAYER_COUNTS, ROLE_TABLE, ROLE_NAME } from '../engine/game';
+import { DUEL_PLAYERS, isDuel, isTeam, PLAYER_COUNTS, ROLE_TABLE, ROLE_NAME, TEAM_PLAYERS } from '../engine/game';
 import { loadLevel, loadPlayers, loadTutorialAsked, saveLevel, savePlayers, saveTutorialAsked } from './storage';
 import { Modal } from './components';
 import { GameScreen } from './GameScreen';
@@ -44,7 +44,7 @@ export function App() {
   return (
     <main className="menu">
       <h1>三国身份牌</h1>
-      <p className="muted">{isDuel(players) ? '1v1 对决 · 你与 1 名电脑单挑' : `身份局 · 你与 ${players - 1} 名电脑对战`}</p>
+      <p className="muted">{isDuel(players) ? '1v1 对决 · 你与 1 名电脑单挑' : isTeam(players) ? '2v2 组队 · 你和 1 名电脑队友对战 2 名电脑' : `身份局 · 你与 ${players - 1} 名电脑对战`}</p>
       <div className="level-pick">
         人数：
         {PLAYER_COUNTS.map((n) => (
@@ -54,6 +54,9 @@ export function App() {
         ))}
         <button className={players === DUEL_PLAYERS ? 'active' : ''} onClick={() => pickPlayers(DUEL_PLAYERS)}>
           1v1
+        </button>
+        <button className={players === TEAM_PLAYERS ? 'active' : ''} onClick={() => pickPlayers(TEAM_PLAYERS)}>
+          2v2
         </button>
         <div className="muted level-note">{roleSummary(players)}</div>
       </div>
@@ -101,6 +104,7 @@ export function App() {
 /** 身份配置说明，如「主公 1、忠臣 1、反贼 2、内奸 1」 */
 export function roleSummary(players: number): string {
   if (isDuel(players)) return '没有身份，打死对方就赢；先手随机，第一回合少摸 1 张牌；双方各从 3 名武将中选 1 名（部分武将不可选）。';
+  if (isTeam(players)) return '甲乙两队交错就座，队友坐对面；打死对方两人才赢；甲队第一个行动的人第一回合少摸 1 张牌；按行动顺序每人从 3 名武将中选 1 名。';
   const roles = ROLE_TABLE[players];
   return (['lord', 'loyalist', 'rebel', 'renegade'] as const).map((r) => `${ROLE_NAME[r]} ${roles.filter((x) => x === r).length}`).join('、');
 }

@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react';
-import { DRAW_GAME_PILES, DRAW_PER_TURN, DUEL_BANNED, isDuel, roleLabel, YINREN_TEXT } from '../engine/game';
+import { DRAW_GAME_PILES, DRAW_PER_TURN, DUEL_BANNED, isVersus, roleLabel, TEAM_BANNED, YINREN_TEXT } from '../engine/game';
 import { FACTION_NAME, generalDef } from '../data/generals';
 import type { PlayerPublic } from '../engine/types';
-import { Modal } from './components';
+import { Modal, roleBadgeClass } from './components';
 import { loadTips, resetTips, setTipsOff } from './tips';
 
 /** 规则主题：主菜单的规则说明页与对局中的速查面板共用 */
@@ -65,6 +65,19 @@ export const RULE_TOPICS: RuleTopic[] = [
           以下武将的技能只作用于「其他角色」、需要多名其他角色，或在两人局里明显过强 / 过弱，1v1 不可选：
           {[...DUEL_BANNED].map((g) => generalDef(g).name).join('、')}。
         </p>
+      </>
+    ),
+  },
+  {
+    id: 'team',
+    title: '2v2 组队',
+    body: (
+      <>
+        <p>四人分成甲、乙两队，交错就座（甲、乙、甲、乙），队友坐在对面（距离 2），左右两边都是对手。身份全部公开。</p>
+        <p>打死对方两人才算赢；一人阵亡后，他的队友继续独自作战。甲队第一个行动的人第一回合只摸 1 张牌。</p>
+        <p>选将：从第一个行动的人开始按座位顺序，每人从随机 3 名武将中选 1 名，能看到前面所有人的选择。没有主公体力加成，主公技不生效，技能说明里的「主公除外」也不适用，没有击杀奖惩。</p>
+        <p>本队已有一人阵亡时，侧栏会出现「认输」按钮，认输计为失败。</p>
+        <p>以下武将在 2v2 明显过强 / 过弱，不可选：{[...TEAM_BANNED].map((g) => generalDef(g).name).join('、')}。</p>
       </>
     ),
   },
@@ -139,14 +152,14 @@ function CurrentGenerals({ players, me }: { players: PlayerPublic[]; me: number 
       {players.map((p) => {
         if (!p.general) return null;
         const g = generalDef(p.general);
-        const isLord = p.role === 'lord' && !isDuel(players.length);
+        const isLord = p.role === 'lord' && !isVersus(players.length);
         return (
           <div key={p.seat} className={`help-general ${p.alive ? '' : 'muted'}`}>
             <b>
               {p.seat === me ? '你' : p.name} · {g.name}
             </b>
             <span className="faction-tag">{FACTION_NAME[g.faction]}</span>
-            {p.role && <span className={`role-badge role-${p.role}`}>{roleLabel(p.role, players.length)}</span>}
+            {p.role && <span className={roleBadgeClass(p.role, players.length)}>{roleLabel(p.role, players.length)}</span>}
             {!p.alive && '（阵亡）'}
             {g.skills.map((s) => (
               <p key={s.name} className="skill-text">

@@ -39,12 +39,13 @@ export const WINNER_NAME: Record<Winner, string> = {
 /** 身份显示名：1v1 中显示为先手 / 后手 */
 export function roleLabel(role: Role, players: number): string {
   if (isDuel(players)) return role === 'lord' ? '先手' : '后手';
+  if (isTeam(players)) return role === 'rebel' ? '乙队' : '甲队';
   return ROLE_NAME[role];
 }
 
-/** 获胜方显示名：1v1 中显示为先手 / 后手 */
+/** 获胜方显示名：1v1 显示先手 / 后手，2v2 显示甲队 / 乙队 */
 export function winnerLabel(winner: Winner, players: number): string {
-  if (isDuel(players) && (winner === 'lord' || winner === 'rebel')) return roleLabel(winner, players);
+  if (isVersus(players) && (winner === 'lord' || winner === 'rebel')) return roleLabel(winner, players);
   return WINNER_NAME[winner];
 }
 
@@ -62,13 +63,22 @@ export const ROLE_TABLE: Record<number, Role[]> = {
   8: ['lord', 'loyalist', 'loyalist', 'rebel', 'rebel', 'rebel', 'renegade', 'renegade'],
   // 1v1：先手方内部当作「主公」、后手方当作「反贼」，复用胜负判定与选将顺序（界面显示为先手 / 后手）
   2: ['lord', 'rebel'],
+  // 2v2：甲队为「主公 + 忠臣」、乙队为两名「反贼」，座位交错（开局时整体随机旋转，主公为先手）
+  4: ['lord', 'rebel', 'loyalist', 'rebel'],
 };
 /** 各人数的主公体力上限加成 */
-export const LORD_BONUS: Record<number, number> = { 2: 0, 5: 1, 6: 1, 7: 0, 8: 0 };
+export const LORD_BONUS: Record<number, number> = { 2: 0, 4: 0, 5: 1, 6: 1, 7: 0, 8: 0 };
 
 /** 1v1 对决的人数 */
 export const DUEL_PLAYERS = 2;
 export const isDuel = (players: number) => players === DUEL_PLAYERS;
+/** 2v2 组队的人数 */
+export const TEAM_PLAYERS = 4;
+export const isTeam = (players: number) => players === TEAM_PLAYERS;
+/** 对战模式（1v1、2v2）：身份公开、无主公加成与主公技、无击杀奖惩、先手第一回合少摸 */
+export const isVersus = (players: number) => isDuel(players) || isTeam(players);
+/** 2v2 不可选的武将：模拟胜率偏离 50% 超过 10%（大乔、魏延偏强；张辽【先登】在 2v2 无用，偏弱） */
+export const TEAM_BANNED = new Set(['daqiao', 'zhangliao', 'weiyan']);
 /**
  * 1v1 不可选的武将：
  * - 技能只作用于「其他角色」或需要多名其他角色（刘备、貂蝉、典韦、鲁肃、蔡文姬、大乔、贾诩、张角、糜竺），或永远生效过强（关羽）；
@@ -234,6 +244,14 @@ export interface GameOptions {
   maxTurns?: number;
   /** 关闭全部武将技能（用于测试基础规则） */
   disableSkills?: boolean;
+  /** 回放用：第 at 次询问回答后，seat 认输（2v2） */
+  resign?: Resignation;
+}
+
+/** 认输：seat 在第 at 次询问（从 1 计）回答后认输 */
+export interface Resignation {
+  seat: number;
+  at: number;
 }
 
 export class Game {
@@ -314,9 +332,19 @@ export class Game {
     return isDuel(this.opts.controllers.length);
   }
 
+  /** 2v2 组队 */
+  get team(): boolean {
+    return isTeam(this.opts.controllers.length);
+  }
+
+  /** 对战模式（1v1 或 2v2） */
+  get versus(): boolean {
+    return isVersus(this.opts.controllers.length);
+  }
+
   constructor(private readonly opts: GameOptions) {
     if (!ROLE_TABLE[opts.controllers.length]) {
-      throw new Error(`需要 ${[DUEL_PLAYERS, ...PLAYER_COUNTS].join(' / ')} 个控制器`);
+      throw new Error(`需要 ${[DUEL_PLAYERS, TEAM_PLAYERS, ...PLAYER_COUNTS].join(' / ')} 个控制器`);
     }
     this.rng = new Rng(opts.seed ?? Date.now());
     this.controllers = opts.controllers;
@@ -359,7 +387,7 @@ export class Game {
 
   /** 角色是否拥有某武将的技能（存活） */
   private isLordSeat(seat: number): boolean {
-    return this.players[seat].role === 'lord';
+    return this.players[seat].role === 'lord' && !this.versus;
   }
 
   is(seat: number, general: string): boolean {
@@ -369,7 +397,7 @@ export class Game {
 
   /** 主公技：须为主公且为该武将 */
   isLord(seat: number, general: string): boolean {
-    return this.is(seat, general) && this.players[seat].role === 'lord' && !this.duel;
+    return this.is(seat, general) && this.players[seat].role === 'lord' && !this.versus;
   }
 
   faction(seat: number) {
@@ -395,7 +423,13 @@ export class Game {
 
   async setup(): Promise<void> {
     const n = this.controllers.length;
-    const roles = this.opts.roles ?? this.rng.shuffle([...ROLE_TABLE[n]]);
+    let roles = this.opts.roles;
+    if (!roles && this.team) {
+      // 座位交错：整体随机旋转，保持甲乙甲乙
+      const r = this.rng.int(n);
+      roles = ROLE_TABLE[n].map((_, seat) => ROLE_TABLE[n][(seat - r + n) % n]);
+    }
+    roles ??= this.rng.shuffle([...ROLE_TABLE[n]]);
     this.players = roles.map((role, seat) => ({
       seat,
       name: this.opts.names?.[seat] ?? `${seat + 1}号位`,
@@ -432,7 +466,8 @@ export class Game {
       this.opts.generals.forEach((g, seat) => (this.players[seat].general = g));
       return;
     }
-    const pool = this.rng.shuffle(GENERAL_KEYS.filter((g) => !this.duel || !DUEL_BANNED.has(g)));
+    const banned = this.duel ? DUEL_BANNED : this.team ? TEAM_BANNED : null;
+    const pool = this.rng.shuffle(GENERAL_KEYS.filter((g) => !banned?.has(g)));
     const take = (k: number) => pool.splice(0, k);
 
     // 主公先选，结果公开；其余玩家再选
@@ -441,9 +476,11 @@ export class Game {
       await this.ask(lordSeat, { type: 'chooseGeneral', options: lordOptions }),
       lordOptions,
     );
-    for (const p of this.players) {
+    // 2v2 从先手开始按座位顺序选；身份局主公之后按座位号
+    const order = this.team ? this.aliveFrom(lordSeat).map((s) => this.players[s]) : this.players;
+    for (const p of order) {
       if (p.seat === lordSeat) continue;
-      const options = take(this.duel ? DUEL_CHOICES : OTHER_CHOICES);
+      const options = take(this.versus ? DUEL_CHOICES : OTHER_CHOICES);
       p.general = this.validChoice(await this.ask(p.seat, { type: 'chooseGeneral', options }), options);
     }
   }
@@ -464,7 +501,7 @@ export class Game {
       if (e instanceof GameOver) {
         this.winner = e.winner;
         this.phase = 'over';
-        this.addLog(e.winner === 'draw' ? '游戏结束，平局！' : `游戏结束，${WINNER_NAME[e.winner]}获胜！`);
+        this.addLog(e.winner === 'draw' ? '游戏结束，平局！' : `游戏结束，${winnerLabel(e.winner, this.players.length)}获胜！`);
         return e.winner;
       }
       throw e;
@@ -689,7 +726,7 @@ export class Game {
   async drawPhase(p: Player): Promise<void> {
     const seat = p.seat;
     // 断粮：本回合少摸 1 张；1v1 先手第一回合少摸 1 张
-    const less = (this.duanliangActive ? 1 : 0) + (this.duel && this.turn === 1 ? DUEL_FIRST_DRAW_LESS : 0);
+    const less = (this.duanliangActive ? 1 : 0) + (this.versus && this.turn === 1 ? DUEL_FIRST_DRAW_LESS : 0);
     if (this.is(seat, 'zhugeliang')) {
       // 神算：观看 3 张，获得 2 张（断粮时 1 张），余下置于牌堆底
       const keep = 2 - less;
@@ -2008,7 +2045,7 @@ export class Game {
     const t = this.players[seat];
     t.alive = false;
     this.deathOrder.push(seat);
-    this.addLog(`${this.who(seat)} 阵亡，身份是【${ROLE_NAME[t.role]}】。`, { type: 'death', seat });
+    this.addLog(this.versus ? `${this.who(seat)} 阵亡。` : `${this.who(seat)} 阵亡，身份是【${ROLE_NAME[t.role]}】。`, { type: 'death', seat });
     this.discard(t.hand.splice(0));
     this.discard(this.takeAllEquips(t));
     this.discard(t.judge.splice(0).map((j) => j.card));
@@ -2040,7 +2077,8 @@ export class Game {
       this.recover(s, 1);
     }
 
-    if (killer === null || killer === seat) return;
+    // 对战模式没有击杀奖惩
+    if (killer === null || killer === seat || this.versus) return;
     const k = this.players[killer];
     if (!k.alive) return;
     if (t.role === 'rebel') {
@@ -2064,6 +2102,12 @@ export class Game {
 
   checkVictory(): Winner | null {
     const alive = this.players.filter((p) => p.alive);
+    if (this.team) {
+      // 2v2：对方两人都阵亡才算赢
+      if (!alive.some((p) => p.role === 'rebel')) return 'lord';
+      if (!alive.some((p) => p.role !== 'rebel')) return 'rebel';
+      return null;
+    }
     const lord = this.players.find((p) => p.role === 'lord')!;
     if (!lord.alive) {
       return alive.length === 1 && alive[0].role === 'renegade' ? 'renegade' : 'rebel';
@@ -2089,8 +2133,36 @@ export class Game {
 
   // ───────────── 视图与询问 ─────────────
 
+  /** 已回答的询问次数（认输记录用） */
+  askCount = 0;
+  /** 认输请求（界面设置，在下一次询问回答后生效） */
+  private resignRequest: number | null = null;
+  /** 已生效的认输 */
+  resigned: Resignation | null = null;
+
+  /** 2v2：本队已有人阵亡时可以认输 */
+  canResign(seat: number): boolean {
+    if (!this.team || this.phase === 'setup' || this.resignRequest !== null) return false;
+    const side = (s: number) => this.players[s].role === 'rebel';
+    return this.players.some((p) => !p.alive && side(p.seat) === side(seat));
+  }
+
+  /** 请求认输：在当前（或下一次）询问回答后结束本局 */
+  resign(seat: number): void {
+    if (this.canResign(seat)) this.resignRequest = seat;
+  }
+
   async ask<R extends Request>(seat: number, req: R): Promise<Response<R>> {
-    return this.controllers[seat].decide(this.view(seat), req);
+    const r = await this.controllers[seat].decide(this.view(seat), req);
+    this.askCount++;
+    const replayed = this.opts.resign?.at === this.askCount ? this.opts.resign.seat : null;
+    const who = this.resignRequest ?? replayed;
+    if (who !== null) {
+      this.resigned = { seat: who, at: this.askCount };
+      this.addLog(`${this.who(who)} 认输。`);
+      throw new GameOver(this.players[who].role === 'rebel' ? 'lord' : 'rebel');
+    }
+    return r;
   }
 
   view(seat: number): GameView {
@@ -2111,7 +2183,7 @@ export class Game {
         seat: p.seat,
         name: p.name,
         general: p.general,
-        role: p.seat === seat || p.role === 'lord' || !p.alive || this.revealed.has(p.seat) || this.duel ? p.role : null,
+        role: p.seat === seat || p.role === 'lord' || !p.alive || this.revealed.has(p.seat) || this.versus ? p.role : null,
         hp: p.hp,
         maxHp: p.maxHp,
         alive: p.alive,

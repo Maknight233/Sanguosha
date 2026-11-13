@@ -1,10 +1,15 @@
 import type { ReactNode } from 'react';
 import { cardDef, isRed, SUIT_SYMBOL } from '../data/cards';
 import { FACTION_NAME, generalDef } from '../data/generals';
-import { DUEL_BANNED, roleLabel, YINREN_TEXT } from '../engine/game';
-import type { Card, EquipSlot, PlayerPublic } from '../engine/types';
+import { DUEL_BANNED, isTeam, TEAM_BANNED, roleLabel, YINREN_TEXT } from '../engine/game';
+import type { Card, EquipSlot, PlayerPublic, Role } from '../engine/types';
 import { CardTip, SkillTip, tipProps } from './tooltip';
 import { CardArt, GeneralArt, hasCardArt, hasGeneralArt } from './art';
+
+/** 身份标签的样式：2v2 同队同色（甲队用主公色、乙队用反贼色） */
+export function roleBadgeClass(role: Role | null, players: number): string {
+  return `role-badge role-${isTeam(players) && role === 'loyalist' ? 'lord' : role ?? 'unknown'}`;
+}
 
 const RANK_TEXT = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const KIND_NAME = { basic: '基础', trick: '锦囊', equip: '装备' } as const;
@@ -62,7 +67,7 @@ export function GeneralCard({
   duelNote,
 }: {
   general: string;
-  /** 规则页：标注 1v1 不可选 */
+  /** 规则页：标注 1v1 / 2v2 不可选 */
   duelNote?: boolean;
   selected?: boolean;
   onClick?: () => void;
@@ -80,7 +85,9 @@ export function GeneralCard({
         <span className="faction-tag">{FACTION_NAME[g.faction]}</span>
         <b>{g.name}</b>
         <Hp hp={g.hp + (lord ? 1 : 0)} maxHp={g.hp + (lord ? 1 : 0)} />
-        {duelNote && DUEL_BANNED.has(general) && <span className="muted duel-note">1v1 不可选</span>}
+        {duelNote && (DUEL_BANNED.has(general) || TEAM_BANNED.has(general)) && (
+          <span className="muted duel-note">{[DUEL_BANNED.has(general) && '1v1', TEAM_BANNED.has(general) && '2v2'].filter(Boolean).join('、')} 不可选</span>
+        )}
       </div>
       {g.skills.map((s) => (
         <p key={s.name} className="skill-text">
@@ -144,7 +151,7 @@ export function JudgeZone({ judge }: { judge: PlayerPublic['judge'] }) {
 
 interface SeatProps {
   p: PlayerPublic;
-  /** 人数（1v1 时身份显示为先手 / 后手） */
+  /** 人数（1v1 显示先手 / 后手，2v2 显示甲队 / 乙队） */
   players?: number;
   isCurrent: boolean;
   selectable: boolean;
@@ -169,7 +176,7 @@ export function SeatView({ p, players = 5, isCurrent, selectable, selected, dist
       <div className="seat-top">
         <span className="seat-name">{p.name}</span>
         <span>
-          <span className={`role-badge role-${p.role ?? 'unknown'}`}>{p.role ? roleLabel(p.role, players) : '？'}</span>
+          <span className={roleBadgeClass(p.role, players)}>{p.role ? roleLabel(p.role, players) : '？'}</span>
           {onInfo && <InfoButton onClick={onInfo} />}
         </span>
       </div>

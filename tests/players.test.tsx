@@ -46,7 +46,7 @@ describe('人数 5–8', () => {
   });
 
   it('其他人数的控制器数量会报错', () => {
-    expect(() => new Game({ controllers: [0, 1, 2, 3].map(() => new BasicAI()) })).toThrow();
+    expect(() => new Game({ controllers: [0, 1, 2].map(() => new BasicAI()) })).toThrow();
   });
 
   it.each([6, 7, 8])('%i 人局：AI 能打完，身份按表分配', async (n) => {
