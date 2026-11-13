@@ -175,6 +175,23 @@ const defs: GeneralDef[] = [
     key: 'pangde', name: '庞德', faction: 'wei', hp: 5,
     skills: [{ name: '抬榇', description: '锁定技，你脱离濒死状态后，摸三张牌。' }],
   },
+  // ───── 第八批：拼点 ─────
+  {
+    key: 'xuchu', name: '许褚', faction: 'wei', hp: 4,
+    skills: [{ name: '搏虎', description: '出牌阶段限一次，你可以与攻击范围内一名角色拼点：若你赢，你对其造成 1 点伤害；若你没赢，本回合你不能再使用【斩】。' }],
+  },
+  {
+    key: 'fazheng', name: '法正', faction: 'shu', hp: 3,
+    skills: [{ name: '奇谋', description: '出牌阶段限一次，你可以与一名其他角色拼点：若你赢，你获得双方的拼点牌。' }],
+  },
+  {
+    key: 'chengpu', name: '程普', faction: 'wu', hp: 4,
+    skills: [{ name: '老将', description: '你的拼点牌点数 +2（最多算 K）。出牌阶段限一次，你可以与一名其他角色拼点：若你赢，你弃置其一张牌。' }],
+  },
+  {
+    key: 'jiaxu', name: '贾诩', faction: 'qun', hp: 3,
+    skills: [{ name: '乱策', description: '出牌阶段限一次，你可以弃置一张手牌，令两名有手牌的其他角色拼点（先选的一方为发起者），赢的一方视为对没赢的一方使用一张【斩】（不计入次数）。' }],
+  },
 ];
 
 export const GENERALS: Record<string, GeneralDef> = Object.fromEntries(defs.map((g) => [g.key, g]));

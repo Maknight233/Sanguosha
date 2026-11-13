@@ -287,6 +287,47 @@ const MOTIFS: Record<string, Motif> = {
       </>
     ),
   },
+  claw: {
+    draw: (
+      <>
+        <path d="M-30,-44 C-18,-14 -18,16 -34,44 C-24,18 -26,-12 -36,-40 Z" />
+        <path d="M-2,-48 C10,-16 10,16 -6,48 C4,18 2,-14 -8,-44 Z" />
+        <path d="M26,-44 C38,-14 38,16 22,44 C32,18 30,-12 20,-40 Z" />
+      </>
+    ),
+  },
+  weiqi: {
+    draw: (
+      <>
+        <rect x="-44" y="-44" width="88" height="88" rx="4" />
+        <g stroke="#f3ead2" strokeWidth="1.4">
+          <path d="M-33,-33 V33 M-11,-33 V33 M11,-33 V33 M33,-33 V33 M-33,-33 H33 M-33,-11 H33 M-33,11 H33 M-33,33 H33" />
+        </g>
+        <circle cx="-11" cy="-11" r="8" fill="#f3ead2" />
+        <circle cx="11" cy="11" r="8" fill="#f3ead2" />
+        <circle cx="11" cy="-11" r="8" stroke="#f3ead2" strokeWidth="2" />
+      </>
+    ),
+  },
+  helmet: {
+    draw: (
+      <>
+        <path d="M-40,20 C-42,-18 -22,-40 0,-40 C22,-40 42,-18 40,20 L28,20 L28,4 L-28,4 L-28,20 Z" />
+        <path d="M0,-40 L0,-58 M-8,-56 L8,-56" stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
+        <path d="M-44,20 L44,20 L36,34 L-36,34 Z" />
+        <path d="M-6,4 L-6,30 L6,30 L6,4 Z" fill="#f3ead2" />
+      </>
+    ),
+  },
+  brush: {
+    draw: (
+      <>
+        <rect x="-5" y="-50" width="10" height="64" rx="3" transform="rotate(30)" />
+        <path d="M-2,14 C8,24 6,40 -10,52 C-14,40 -18,26 -10,16 Z" transform="rotate(30)" />
+        <path d="M-46,40 C-20,30 0,44 24,36 C34,32 42,34 48,40" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+      </>
+    ),
+  },
   horse: {
     draw: (
       <>
@@ -344,6 +385,10 @@ const GENERAL_MOTIF: Record<string, string> = {
   daqiao: 'lotus',
   mizhu: 'sack',
   pangde: 'saber',
+  xuchu: 'claw',
+  fazheng: 'weiqi',
+  chengpu: 'helmet',
+  jiaxu: 'brush',
 };
 
 const CARD_MOTIF: Record<string, string> = {

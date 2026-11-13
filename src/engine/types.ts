@@ -93,12 +93,12 @@ export interface PlayOption {
 
 /** 出牌阶段可发动的主动技能 */
 export interface SkillOption {
-  skill: 'kuanren' | 'huoji' | 'huoxin' | 'baodao' | 'lianmeng' | 'fencheng' | 'qixi' | 'dujiang' | 'duoxie' | 'yinrenDraw' | 'yinrenHit' | 'fushang' | 'jikun';
+  skill: 'kuanren' | 'huoji' | 'huoxin' | 'baodao' | 'lianmeng' | 'fencheng' | 'qixi' | 'dujiang' | 'duoxie' | 'yinrenDraw' | 'yinrenHit' | 'fushang' | 'jikun' | 'bohu' | 'qimou' | 'laojiang' | 'luance';
   /** 需要弃置/使用的手牌张数 */
   cardCount: number;
   /** 第一目标候选；空数组表示无需指定目标（如焚城） */
   targets: number[];
-  /** 惑心：第一目标 → 第二目标候选 */
+  /** 惑心 / 乱策：第一目标 → 第二目标候选 */
   secondTargets?: Record<number, number[]>;
 }
 
@@ -144,15 +144,28 @@ export type Request =
   | { type: 'respond'; accept: string[]; reason: RespondReason; allowPair?: boolean; equipDodge?: Card[] }
   | { type: 'discard'; count: number }
   /** 从目标区域选一张牌：手牌随机抽取，装备可指定 */
-  | { type: 'chooseCard'; target: number; handCount: number; equips: Card[]; reason: 'jieying' | 'cefan' | 'liuxing' }
+  | { type: 'chooseCard'; target: number; handCount: number; equips: Card[]; reason: 'jieying' | 'cefan' | 'liuxing' | 'laojiang' }
   /** 养生的选项 id 为要弃置的手牌 id（字符串），'no' 表示不发动 */
   /** target / amount：舍身时为将受到伤害的角色与伤害值 */
   /** judge：定策 / 卜筮时为当前判定 */
   | { type: 'choose'; options: ChoiceOption[]; reason: ChooseReason; target?: number; amount?: number; judge?: JudgeInfo }
   /** 从给定牌中选出 count 张 */
-  | { type: 'selectCards'; cards: Card[]; count: number; reason: 'mousuan' | 'shensuan' | 'xiaoyong' | 'huoxin' | 'duoxie' }
+  /** pindian：拼点时选一张手牌；附带对手、是否为发起者、技能名 */
+  | { type: 'selectCards'; cards: Card[]; count: number; reason: 'mousuan' | 'shensuan' | 'xiaoyong' | 'huoxin' | 'duoxie' | 'pindian'; pindian?: PindianInfo }
   /** 将牌排序放回牌堆顶，返回的第一张在最上面 */
   | { type: 'orderCards'; cards: Card[]; reason: 'mousuan' };
+
+/** 拼点请求的上下文 */
+export interface PindianInfo {
+  /** 拼点对手 */
+  opponent: number;
+  /** 自己是否为发起者（平局算发起者输） */
+  initiator: boolean;
+  /** 发起拼点的技能：bohu / qimou / laojiang / luance */
+  skill: string;
+  /** 乱策时的技能使用者（贾诩） */
+  by: number;
+}
 
 export type CardPick = { zone: 'hand' } | { zone: 'equip'; cardId: number };
 
@@ -188,7 +201,9 @@ export type LogEvent =
   | { type: 'dying'; seat: number }
   /** 判定：seat 进行判定（what 为延时锦囊牌名或 'qixi'，trick 为延时锦囊），结果为 result；effective 为是否生效（奇袭为是否黑色） */
   | { type: 'judge'; seat: number; what: string; trick?: Card; result: Card; effective: boolean }
-  | { type: 'death'; seat: number };
+  | { type: 'death'; seat: number }
+  /** 拼点：from 为发起者；win 为发起者是否赢；ranks 为计入加成后的点数 */
+  | { type: 'pindian'; from: number; to: number; cards: [Card, Card]; ranks: [number, number]; win: boolean };
 
 export interface LogEntry {
   turn: number;

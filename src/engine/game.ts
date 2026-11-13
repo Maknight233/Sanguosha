@@ -1,4 +1,4 @@
-import { BASIC_KEYS, buildDeck, cardDef, cardText, isRed, TIANLEI_DAMAGE, tianleiHit } from '../data/cards';
+import { BASIC_KEYS, buildDeck, cardDef, cardText, isRed, RANK_TEXT, TIANLEI_DAMAGE, tianleiHit } from '../data/cards';
 import { GENERAL_KEYS, generalDef } from '../data/generals';
 import { Rng } from './rng';
 import type {
@@ -153,6 +153,10 @@ export const SKILL_TUNING = {
   fushangDraw: 1,
   /** 济困：糜竺对自己使用【药】后摸几张 */
   jikunSelf: 1,
+  /** 老将：程普拼点牌点数加成 */
+  laojiangBonus: 2,
+  /** 乱策：发动时弃置的手牌数 */
+  luanceCost: 1,
 };
 
 /** 对目标有害的锦囊 */
@@ -248,6 +252,8 @@ export class Game {
   bushiRoundUsed = false;
   /** 【拔矢】本回合已发动的座位 → 回合数 */
   bashiTurn = new Map<number, number>();
+  /** 许褚【搏虎】拼点没赢：本回合不能再使用【斩】 */
+  bohuFailed = false;
   /** 蔡文姬【清音】已发动的座位（每回合开始时清空；qingyinLimit=round 时只在其本人回合开始时重置） */
   qingyinUsed = new Set<number>();
   /** 马超【怒袭】：持有「怒」的座位 */
@@ -441,6 +447,7 @@ export class Game {
     this.dealtDamageThisTurn = false;
     this.duanliangActive = false;
     this.junlingActive = false;
+    this.bohuFailed = false;
     if (this.is(seat, 'yuji')) this.bushiRoundUsed = false;
     if (SKILL_TUNING.qingyinLimit === 'turn') this.qingyinUsed.clear();
     else this.qingyinUsed.delete(seat);
@@ -880,7 +887,7 @@ export class Game {
 
   /** 军令：判定生效的回合内不能使用【斩】（打出不受影响） */
   zhanBlocked(seat: number): boolean {
-    return this.junlingActive && seat === this.current;
+    return (this.junlingActive || this.bohuFailed) && seat === this.current;
   }
 
   legalSkills(seat: number): SkillOption[] {
@@ -929,6 +936,27 @@ export class Game {
     if (this.is(seat, 'zhangfei') && !this.skillUsed.has('duoxie')) {
       const targets = others.filter((t) => this.distance(seat, t) <= 1 && equipCount(this.players[t]) > 0);
       if (targets.length > 0) res.push({ skill: 'duoxie', cardCount: 0, targets });
+    }
+    // 第八批：拼点（发起者与目标都要有手牌）
+    if (p.hand.length > 0) {
+      const withHand = others.filter((t) => this.players[t].hand.length > 0);
+      if (this.is(seat, 'xuchu') && !this.skillUsed.has('bohu')) {
+        const targets = withHand.filter((t) => this.inAttackRange(seat, t));
+        if (targets.length > 0) res.push({ skill: 'bohu', cardCount: 0, targets });
+      }
+      if (this.is(seat, 'fazheng') && !this.skillUsed.has('qimou') && withHand.length > 0) {
+        res.push({ skill: 'qimou', cardCount: 0, targets: withHand });
+      }
+      if (this.is(seat, 'chengpu') && !this.skillUsed.has('laojiang') && withHand.length > 0) {
+        res.push({ skill: 'laojiang', cardCount: 0, targets: withHand });
+      }
+    }
+    if (this.is(seat, 'jiaxu') && !this.skillUsed.has('luance') && p.hand.length >= SKILL_TUNING.luanceCost) {
+      const withHand = others.filter((t) => this.players[t].hand.length > 0);
+      if (withHand.length >= 2) {
+        const second = Object.fromEntries(withHand.map((a) => [a, withHand.filter((b) => b !== a)]));
+        res.push({ skill: 'luance', cardCount: SKILL_TUNING.luanceCost, targets: withHand, secondTargets: second });
+      }
     }
     if (this.hasYinren(seat) && !this.yinrenUsed.has(seat)) {
       if ((this.damageTaken[seat] ?? 0) > 0) res.push({ skill: 'yinrenDraw', cardCount: 0, targets: [] });
@@ -1261,6 +1289,68 @@ export class Game {
         this.drawCards(p, SKILL_TUNING.fushangDraw);
         break;
       }
+      case 'bohu': {
+        this.skillUsed.add('bohu');
+        this.markHostile(seat, target);
+        this.addLog(`${this.who(seat)} 发动【搏虎】，与 ${this.who(target)} 拼点。`, { type: 'use', from: seat, to: [target], cards: [], skill: '搏虎' });
+        const win = await this.pindian(seat, target, 'bohu');
+        if (win) {
+          await this.damage(seat, target, 1);
+        } else {
+          this.bohuFailed = true;
+          this.addLog(`${this.who(seat)} 本回合不能再使用【斩】。`);
+        }
+        break;
+      }
+      case 'qimou': {
+        this.skillUsed.add('qimou');
+        this.markHostile(seat, target, HOSTILE_WEIGHT.steal);
+        this.addLog(`${this.who(seat)} 发动【奇谋】，与 ${this.who(target)} 拼点。`, { type: 'use', from: seat, to: [target], cards: [], skill: '奇谋' });
+        const res = await this.pindianCards(seat, target, 'qimou');
+        if (res?.win) {
+          this.discardPile.splice(-2);
+          p.hand.push(...res.cards);
+          this.addLog(`${this.who(seat)} 获得了双方的拼点牌。`);
+        }
+        break;
+      }
+      case 'laojiang': {
+        this.skillUsed.add('laojiang');
+        this.markHostile(seat, target, HOSTILE_WEIGHT.steal);
+        this.addLog(`${this.who(seat)} 发动【老将】，与 ${this.who(target)} 拼点。`, { type: 'use', from: seat, to: [target], cards: [], skill: '老将' });
+        if (!(await this.pindian(seat, target, 'laojiang'))) break;
+        const taken = await this.pickCardFrom(seat, target, 'laojiang');
+        if (taken) {
+          this.discard([taken]);
+          this.addLog(`${this.who(seat)} 弃置了 ${this.who(target)} 的 ${cardText(taken)}。`, { type: 'discard', from: target, cards: [taken] });
+        }
+        break;
+      }
+      case 'luance': {
+        const second = targets[1];
+        if (!opt.secondTargets?.[target]?.includes(second)) return;
+        this.skillUsed.add('luance');
+        for (const id of ids) this.takeFromHand(p, id);
+        this.discard(cards as Card[]);
+        this.markHostile(seat, target, HOSTILE_WEIGHT.forced);
+        this.markHostile(seat, second, HOSTILE_WEIGHT.forced);
+        const paid = cards.length > 0 ? `弃置 ${(cards as Card[]).map(cardText).join('、')}，` : '';
+        this.addLog(`${this.who(seat)} 发动【乱策】，${paid}令 ${this.who(target)} 与 ${this.who(second)} 拼点。`, {
+          type: 'use',
+          from: seat,
+          to: [target, second],
+          cards: cards as Card[],
+          skill: '乱策',
+        });
+        const res = await this.pindianCards(target, second, 'luance', seat);
+        if (!res) break;
+        const [winner, loser] = res.win ? [target, second] : [second, target];
+        if (!this.players[winner].alive || !this.players[loser].alive) break;
+        this.markHostile(winner, loser, HOSTILE_WEIGHT.forced);
+        this.addLog(`${this.who(winner)} 视为对 ${this.who(loser)} 使用了【斩】（【乱策】）。`, { type: 'use', from: winner, to: [loser], cards: [], skill: '乱策' });
+        await this.resolveZhan(winner, loser);
+        break;
+      }
       case 'jikun': {
         const card = this.takeFromHand(p, cards[0]!.id)!;
         this.addLog(`${this.who(seat)} 对 ${this.who(target)} 使用了 ${cardText(card)}（【济困】）。`, { type: 'use', from: seat, to: [target], cards: [card], skill: '济困' });
@@ -1271,6 +1361,47 @@ export class Game {
         break;
       }
     }
+  }
+
+  /** 拼点牌的点数（程普【老将】+2，最多算 K） */
+  pindianRank(seat: number, card: Card): number {
+    return this.is(seat, 'chengpu') ? Math.min(13, card.rank + SKILL_TUNING.laojiangBonus) : card.rank;
+  }
+
+  /** 拼点：返回发起者是否赢（平局算发起者输）；任一方没有手牌时返回 false */
+  async pindian(from: number, to: number, skill: string, by = from): Promise<boolean> {
+    return (await this.pindianCards(from, to, skill, by))?.win ?? false;
+  }
+
+  /**
+   * 拼点：发起者与目标各选一张手牌同时亮出，两张牌进弃牌堆（最后两张，发起者的在前）。
+   * 返回双方的牌与发起者是否赢；任一方没有手牌时不进行，返回 null。
+   */
+  async pindianCards(from: number, to: number, skill: string, by = from): Promise<{ win: boolean; cards: [Card, Card] } | null> {
+    const a = this.players[from];
+    const b = this.players[to];
+    if (a.hand.length === 0 || b.hand.length === 0) return null;
+    const pick = async (s: number, opp: number, initiator: boolean) => {
+      const hand = this.players[s].hand;
+      const [c] = this.validSelection(
+        await this.ask(s, { type: 'selectCards', cards: [...hand], count: 1, reason: 'pindian', pindian: { opponent: opp, initiator, skill, by } }),
+        hand,
+        1,
+      );
+      return this.takeFromHand(this.players[s], c.id)!;
+    };
+    const ca = await pick(from, to, true);
+    const cb = await pick(to, from, false);
+    const ra = this.pindianRank(from, ca);
+    const rb = this.pindianRank(to, cb);
+    const win = ra > rb;
+    this.discard([ca, cb]);
+    const bonus = (c: Card, r: number) => (r !== c.rank ? `（【老将】算 ${RANK_TEXT[r]}）` : '');
+    this.addLog(
+      `拼点：${this.who(from)} 亮出 ${cardText(ca)}${bonus(ca, ra)}，${this.who(to)} 亮出 ${cardText(cb)}${bonus(cb, rb)}，${this.who(win ? from : to)} 赢。`,
+      { type: 'pindian', from, to, cards: [ca, cb], ranks: [ra, rb], win },
+    );
+    return { win, cards: [ca, cb] };
   }
 
   /** 糜竺【济困】：用【药】令其他角色回复体力后摸两张牌 */
@@ -1462,7 +1593,7 @@ export class Game {
   }
 
   /** 劫营/策反：由使用者选择目标的一张牌（手牌随机），从目标处移除并返回 */
-  async pickCardFrom(user: number, target: number, reason: 'jieying' | 'cefan' | 'liuxing'): Promise<Card | null> {
+  async pickCardFrom(user: number, target: number, reason: 'jieying' | 'cefan' | 'liuxing' | 'laojiang'): Promise<Card | null> {
     const t = this.players[target];
     const equips = Object.values(t.equips).filter((c): c is Card => !!c);
     if (t.hand.length === 0 && equips.length === 0) return null;

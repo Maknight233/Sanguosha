@@ -106,7 +106,7 @@ export function buildDeck(): Card[] {
 }
 
 export const SUIT_SYMBOL: Record<Suit, string> = { spade: '♠', heart: '♥', club: '♣', diamond: '♦' };
-const RANK_TEXT = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+export const RANK_TEXT = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 
 export function cardText(card: Card): string {
   return `${SUIT_SYMBOL[card.suit]}${RANK_TEXT[card.rank]}【${cardDef(card.key).name}】`;

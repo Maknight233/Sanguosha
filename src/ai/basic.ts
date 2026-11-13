@@ -8,6 +8,7 @@ import type {
   Controller,
   GameView,
   JudgeInfo,
+  PindianInfo,
   PlayAction,
   PlayOption,
   PlayerPublic,
@@ -24,10 +25,26 @@ import type {
 
 export type Relation = 'friend' | 'enemy' | 'neutral';
 
+/** 拼点 AI 参数 */
+export const PINDIAN_AI = {
+  /** 程普【老将】加成（与引擎 SKILL_TUNING.laojiangBonus 一致） */
+  laojiangBonus: 2,
+  /** 拼点愿意花掉的牌的最高价值（【避】5.5、【药】7 不拿去拼） */
+  valueLimit: 5,
+  /** 被【搏虎】/【乱策】拼点时愿意花掉的牌的最高价值 */
+  defendLimit: 5.5,
+  /** 估计对方从几张牌里挑最大的 */
+  oppPicks: 3,
+  /** 乱策：队友手牌须比敌人多几张 */
+  luanceFriendLead: 2,
+  /** 乱策：愿意弃置的牌的最高价值 */
+  luancePayLimit: 4,
+};
+
 /** 选将偏好：越靠前越优先 */
 const GENERAL_PREFERENCE = [
   'zhugeliang', 'guojia', 'caocao', 'liubei', 'zhaoyun', 'sunquan', 'ganning', 'lvbu', 'zhangliao', 'lusu',
-  'weiyan', 'zhangfei', 'xiahoudun', 'machao', 'zhoutai', 'huaxiong', 'daqiao', 'mizhu', 'caiwenji', 'pangde', 'xunyu', 'zhouyu', 'gongsunzan', 'dongzhuo', 'huatuo', 'lvmeng', 'yuji', 'luxun', 'taishici',
+  'weiyan', 'zhangfei', 'xiahoudun', 'machao', 'zhoutai', 'huaxiong', 'daqiao', 'mizhu', 'caiwenji', 'pangde', 'xuchu', 'fazheng', 'chengpu', 'jiaxu', 'xunyu', 'zhouyu', 'gongsunzan', 'dongzhuo', 'huatuo', 'lvmeng', 'yuji', 'luxun', 'taishici',
   'huangzhong', 'caoren', 'zhangjiao', 'guanyu', 'dianwei', 'simayi', 'diaochan',
 ];
 /** 选将扰动幅度：偏好表中相差不到这么多名的武将可能互换顺序 */
@@ -204,6 +221,7 @@ class Brain {
         return this.choose(req.reason, req.options);
       case 'selectCards':
         if (req.reason === 'huoxin') return this.cheapest(req.cards, req.count).map((c) => c.id);
+        if (req.reason === 'pindian' && req.pindian) return [this.pindianCard(req.cards, req.pindian).id];
         if (req.reason === 'xiaoyong' || req.reason === 'duoxie') return [this.bestEquipToRemove(req.cards).id];
         return this.best(req.cards, req.count).map((c) => c.id);
       case 'orderCards':
@@ -692,6 +710,23 @@ class Brain {
         if (t === undefined || !yao) return null;
         return { type: 'skill', skill: s.skill, cards: [yao.id], targets: [t] };
       }
+      case 'bohu': {
+        // 手里有【斩】能打到敌人时，输了会失去这次【斩】，要求更高的胜算
+        const zhanReach = this.hand.some((c) => c.key === 'zhan') && this.aliveOthers().some((p) => this.isEnemy(p.seat) && this.inRange(p.seat));
+        const t = this.pindianTarget(s.targets, zhanReach ? 0.65 : 0.45);
+        return t === undefined ? null : { type: 'skill', skill: s.skill, cards: [], targets: [t] };
+      }
+      case 'qimou':
+      case 'laojiang': {
+        const t = this.pindianTarget(s.targets, 0.45);
+        return t === undefined ? null : { type: 'skill', skill: s.skill, cards: [], targets: [t] };
+      }
+      case 'luance': {
+        const pair = this.luancePair(s);
+        const pay = this.cheapest(this.hand.filter((c) => c.key !== 'yao'), s.cardCount);
+        if (!pair || pay.length < s.cardCount || pay.some((c) => this.value(c) > PINDIAN_AI.luancePayLimit)) return null;
+        return { type: 'skill', skill: s.skill, cards: pay.map((c) => c.id), targets: pair };
+      }
       case 'dujiang': {
         // 用不值钱的 ♦ 牌给体力高、手牌少的敌人上【断粮】
         const card = this.cheapest(this.hand.filter((c) => c.suit === 'diamond'), 1)[0];
@@ -700,6 +735,73 @@ class Brain {
         return t === undefined ? null : { type: 'skill', skill: s.skill, cards: [card.id], targets: [t] };
       }
     }
+  }
+
+  // ───────────── 拼点 ─────────────
+
+  /** 拼点牌点数（程普【老将】+2，武将公开） */
+  private pindianRank(seat: number, card: Card): number {
+    return this.view.players[seat].general === 'chengpu' ? Math.min(13, card.rank + PINDIAN_AI.laojiangBonus) : card.rank;
+  }
+
+  /** 拼点愿意花掉的牌：不拿【药】和较值钱的牌去拼 */
+  private pindianFodder(limit = PINDIAN_AI.valueLimit): Card[] {
+    return this.hand.filter((c) => this.value(c) <= limit);
+  }
+
+  /** 主动拼点时打算出的牌：点数最大（相同时更便宜）的可花费手牌 */
+  private pindianBest(seat = this.me.seat, cards = this.pindianFodder()): Card | undefined {
+    return [...cards].sort((a, b) => this.pindianRank(seat, b) - this.pindianRank(seat, a) || this.value(a) - this.value(b))[0];
+  }
+
+  /**
+   * 粗略估计我出点数 r（已含加成）拼赢 opp 的概率（我是发起者，须严格大于）：
+   * 对方大约从 min(手牌数, 3) 张牌中挑最大的一张。
+   */
+  private pindianWinChance(r: number, opp: number): number {
+    const k = Math.min(this.view.players[opp].handCount, PINDIAN_AI.oppPicks);
+    const bonus = this.view.players[opp].general === 'chengpu' ? PINDIAN_AI.laojiangBonus : 0;
+    const beat = Math.max(0, Math.min(13, r - 1 - bonus)) / 13; // 对方单张点数 < r 的概率
+    return beat ** Math.max(1, k);
+  }
+
+  /** 挑一名敌人拼点：胜算不低于 min 时，胜算最高（相同时体力最低）的那个 */
+  private pindianTarget(targets: number[], min: number): number | undefined {
+    const card = this.pindianBest();
+    if (!card) return undefined;
+    const r = this.pindianRank(this.me.seat, card);
+    const ok = targets.filter((t) => this.isEnemy(t) && this.pindianWinChance(r, t) >= min);
+    return this.mostBy(ok, (t) => this.pindianWinChance(r, t) * 10 - this.view.players[t].hp);
+  }
+
+  /** 拼点时选牌 */
+  private pindianCard(cards: Card[], info: PindianInfo): Card {
+    let wantWin: boolean;
+    if (info.skill === 'luance') wantWin = !this.isFriend(info.opponent);
+    else wantWin = info.initiator || !this.isFriend(info.opponent);
+    if (!wantWin) return this.cheapest(cards, 1)[0];
+    // 被【搏虎】要挨打、被【乱策】要挨【斩】时更舍得出好牌
+    const hurts = info.skill === 'bohu' || info.skill === 'luance';
+    const pool = cards.filter((c) => this.value(c) <= (hurts && !info.initiator ? PINDIAN_AI.defendLimit : PINDIAN_AI.valueLimit));
+    return this.pindianBest(this.me.seat, pool.length > 0 ? pool : cards) ?? this.cheapest(cards, 1)[0];
+  }
+
+  /**
+   * 乱策：两名敌人互拼（谁输都有敌人挨【斩】）；
+   * 普通难度下，也可以让手牌明显更多的队友去拼敌人（敌人当发起者，平局也算队友赢）。
+   */
+  private luancePair(s: SkillOption): [number, number] | null {
+    const enemies = s.targets.filter(this.isEnemy);
+    if (enemies.length >= 2) {
+      const a = this.weakest(enemies)!;
+      const b = this.weakest(enemies.filter((x) => x !== a))!;
+      return [a, b];
+    }
+    if (this.level === 'easy' || enemies.length === 0) return null;
+    const e = enemies[0];
+    const friends = s.targets.filter((f) => this.isFriend(f) && this.view.players[f].handCount >= this.view.players[e].handCount + PINDIAN_AI.luanceFriendLead);
+    const f = this.mostBy(friends, (x) => this.view.players[x].handCount);
+    return f === undefined ? null : [e, f];
   }
 
   /**

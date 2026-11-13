@@ -14,7 +14,7 @@ function name(view: GameView, seat: number): string {
   return p.general ? `${p.name}（${generalDef(p.general).name}）` : p.name;
 }
 
-const SKILL_NAME: Record<string, string> = { kuanren: '宽仁', huoji: '火计', huoxin: '惑心', baodao: '宝刀', lianmeng: '联盟', fencheng: '焚城', qixi: '奇袭', dujiang: '渡江', duoxie: '夺械', yinrenDraw: '隐忍·摸牌', yinrenHit: '隐忍·重创', fushang: '抚伤', jikun: '济困' };
+const SKILL_NAME: Record<string, string> = { kuanren: '宽仁', huoji: '火计', huoxin: '惑心', baodao: '宝刀', lianmeng: '联盟', fencheng: '焚城', qixi: '奇袭', dujiang: '渡江', duoxie: '夺械', yinrenDraw: '隐忍·摸牌', yinrenHit: '隐忍·重创', fushang: '抚伤', jikun: '济困', bohu: '搏虎', qimou: '奇谋', laojiang: '老将', luance: '乱策' };
 export function skillName(key: string): string {
   return SKILL_NAME[key] ?? key;
 }
@@ -29,7 +29,7 @@ export function describeRequest(view: GameView, req: Request): string {
     case 'discard':
       return `弃牌阶段：请弃置 ${req.count} 张手牌`;
     case 'chooseCard':
-      return `${{ jieying: '【劫营】弃置', cefan: '【策反】获得', liuxing: '【流星锤】：令其弃置' }[req.reason]} ${name(view, req.target)} 的一张牌`;
+      return `${{ jieying: '【劫营】弃置', cefan: '【策反】获得', liuxing: '【流星锤】：令其弃置', laojiang: '【老将】弃置' }[req.reason]} ${name(view, req.target)} 的一张牌`;
     case 'choose':
       return {
         xiuzheng: '【休整】：请选择',
@@ -57,6 +57,13 @@ export function describeRequest(view: GameView, req: Request): string {
           return '【惑心】：选择一张手牌交给貂蝉';
         case 'duoxie':
           return '【夺械】：选择要获得的装备';
+        case 'pindian': {
+          const info = req.pindian;
+          if (!info) return '拼点：选择一张手牌';
+          const skill = { bohu: '搏虎', qimou: '奇谋', laojiang: '老将', luance: '乱策' }[info.skill] ?? info.skill;
+          const role = info.initiator ? '你是发起者，点数须大于对方才算赢' : '对方是发起者，平局算你赢';
+          return `【${skill}】与 ${name(view, info.opponent)} 拼点：选择一张手牌（${role}）`;
+        }
       }
       break;
     case 'orderCards':

@@ -388,7 +388,7 @@ function selectableSeats(req: Request | null, sel: Selection): number[] {
   if (sel.skill) {
     const t0 = sel.targets[0];
     if (t0 === undefined) return sel.skill.targets;
-    return sel.skill.skill === 'huoxin' ? [t0, ...(sel.skill.secondTargets?.[t0] ?? [])] : [t0];
+    return sel.skill.skill === 'huoxin' || sel.skill.skill === 'luance' ? [t0, ...(sel.skill.secondTargets?.[t0] ?? [])] : [t0];
   }
   return [];
 }
@@ -578,7 +578,7 @@ function PlayerArea({
   if (req?.type === 'play') {
     if (sel.option) canConfirm = sel.option.targets.length === 0 || sel.targets.length >= 1;
     if (sel.skill) {
-      const needTargets = sel.skill.skill === 'huoxin' ? 2 : sel.skill.targets.length === 0 ? 0 : 1;
+      const needTargets = sel.skill.skill === 'huoxin' || sel.skill.skill === 'luance' ? 2 : sel.skill.targets.length === 0 ? 0 : 1;
       canConfirm = picked.length === sel.skill.cardCount && sel.targets.length === needTargets;
       if (sel.skill.skill === 'huoji') canConfirm &&= picked[0].suit === picked[1].suit;
       if (sel.skill.skill === 'dujiang') canConfirm &&= picked[0].suit === 'diamond';
@@ -756,10 +756,10 @@ function playHint(sel: Selection): string {
   }
   if (sel.skill) {
     const parts: string[] = [];
-    const cardNote = { huoji: '（同花色）', baodao: '（装备牌）', dujiang: '（♦ 牌，当【断粮】）', fushang: '（交给目标）', jikun: '（【药】）' }[sel.skill.skill as string] ?? '';
+    const cardNote = { huoji: '（同花色）', baodao: '（装备牌）', dujiang: '（♦ 牌，当【断粮】）', fushang: '（交给目标）', jikun: '（【药】）', luance: '（弃置）' }[sel.skill.skill as string] ?? '';
     if (sel.skill.cardCount > 0) parts.push(`选择 ${sel.skill.cardCount} 张手牌${cardNote}`);
     if (sel.skill.targets.length === 0) parts.push('点击「确定」发动');
-    else parts.push(sel.skill.skill === 'huoxin' ? '依次点击出【斩】者与被【斩】者' : '点击目标角色');
+    else parts.push(sel.skill.skill === 'huoxin' ? '依次点击出【斩】者与被【斩】者' : sel.skill.skill === 'luance' ? '依次点击两名拼点角色（先点的为发起者）' : '点击目标角色');
     return parts.join('，');
   }
   return '';

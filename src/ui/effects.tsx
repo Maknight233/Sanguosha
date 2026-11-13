@@ -155,6 +155,12 @@ export function recentPlays(log: LogEntry[]): PlayedCard[] {
   const out: PlayedCard[] = [];
   for (let i = begin; i < log.length; i++) {
     const ev = log[i].event;
+    if (ev?.type === 'pindian') {
+      const [ra, rb] = ev.ranks;
+      out.push({ key: `${i}-pa`, card: ev.cards[0], from: ev.from, to: [], discard: false, note: `拼点${ra !== ev.cards[0].rank ? `（算 ${ra}）` : ''}·${ev.win ? '赢' : '没赢'}` });
+      out.push({ key: `${i}-pb`, card: ev.cards[1], from: ev.to, to: [], discard: false, note: `拼点${rb !== ev.cards[1].rank ? `（算 ${rb}）` : ''}·${ev.win ? '没赢' : '赢'}` });
+      continue;
+    }
     if (ev?.type === 'judge') {
       out.push({ key: `${i}-j`, card: ev.result, from: ev.seat, to: [], discard: false, note: ev.effective ? '判定·生效' : '判定·未生效' });
       continue;
@@ -181,7 +187,7 @@ export function PlayZone({ log, shortName }: { log: LogEntry[]; shortName: (seat
             {p.to.length > 0 && ` → ${p.to.map(shortName).join('、')}`}
             {p.discard && '（弃）'}
             {p.skill && `【${p.skill}】`}
-            {p.note && <span className={p.note.endsWith('未生效') ? 'muted' : 'red'}> {p.note}</span>}
+            {p.note && <span className={p.note.endsWith('未生效') || p.note.endsWith('没赢') ? 'muted' : 'red'}> {p.note}</span>}
           </div>
         </div>
       ))}

@@ -100,6 +100,8 @@ function eventSeats(ev: LogEvent): number[] {
       return [ev.from, ...ev.to];
     case 'discard':
       return [ev.from];
+    case 'pindian':
+      return [ev.from, ev.to];
     case 'damage':
       return ev.from === null ? [ev.seat] : [ev.seat, ev.from];
     default:
