@@ -62,7 +62,11 @@ export function describeRequest(view: GameView, req: Request): string {
           if (!info) return '拼点：选择一张手牌';
           const skill = { bohu: '搏虎', qimou: '奇谋', laojiang: '老将', luance: '乱策' }[info.skill] ?? info.skill;
           const role = info.initiator ? '你是发起者，点数须大于对方才算赢' : '对方是发起者，平局算你赢';
-          return `【${skill}】与 ${name(view, info.opponent)} 拼点：选择一张手牌（${role}）`;
+          const bonus = [
+            view.players[view.me].general === 'chengpu' ? '你的点数 +2' : '',
+            view.players[info.opponent].general === 'chengpu' ? '对方【老将】点数 +2' : '',
+          ].filter(Boolean);
+          return `【${skill}】与 ${name(view, info.opponent)} 拼点：选择一张手牌（${[role, ...bonus].join('；')}）`;
         }
       }
       break;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BasicAI } from '../src/ai/basic';
 import { Game } from '../src/engine/game';
 import type { Card, Request } from '../src/engine/types';
+import { describeRequest } from '../src/ui/describe';
 import { equip, give, makeGame, ROLES, Scripted } from './helpers';
 
 // 身份：0 主公 1 忠臣 2 反贼 3 反贼 4 内奸；默认当前回合为座位 0
@@ -65,6 +66,26 @@ describe('拼点通用规则', () => {
     const r2 = ctrls[2].requests.at(-1)!;
     expect(r0.type === 'selectCards' && r0.pindian).toEqual({ opponent: 2, initiator: true, skill: 'qimou', by: 0 });
     expect(r2.type === 'selectCards' && r2.pindian).toMatchObject({ opponent: 0, initiator: false });
+  });
+});
+
+describe('拼点提示文字', () => {
+  it('说明谁是发起者，并提醒【老将】的 +2', async () => {
+    const { game } = await setup({ 1: 'chengpu' });
+    const card = giveRank(game, 0, 9);
+    const req = (opponent: number, initiator: boolean): Request => ({
+      type: 'selectCards',
+      cards: [card],
+      count: 1,
+      reason: 'pindian',
+      pindian: { opponent, initiator, skill: 'laojiang', by: opponent },
+    });
+    const t = describeRequest(game.view(0), req(1, false));
+    expect(t).toContain('【老将】');
+    expect(t).toContain('平局算你赢');
+    expect(t).toContain('对方【老将】点数 +2');
+    expect(describeRequest(game.view(0), req(2, true))).not.toContain('+2');
+    expect(describeRequest(game.view(1), req(0, true))).toContain('你的点数 +2');
   });
 });
 
