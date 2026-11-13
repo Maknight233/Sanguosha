@@ -36,6 +36,18 @@ export const WINNER_NAME: Record<Winner, string> = {
   draw: '平局',
 };
 
+/** 身份显示名：1v1 中显示为先手 / 后手 */
+export function roleLabel(role: Role, players: number): string {
+  if (isDuel(players)) return role === 'lord' ? '先手' : '后手';
+  return ROLE_NAME[role];
+}
+
+/** 获胜方显示名：1v1 中显示为先手 / 后手 */
+export function winnerLabel(winner: Winner, players: number): string {
+  if (isDuel(players) && (winner === 'lord' || winner === 'rebel')) return roleLabel(winner, players);
+  return WINNER_NAME[winner];
+}
+
 /** 牌堆第几次被摸光时判平局（防止没人动手的对局无限拖下去） */
 export const DRAW_GAME_PILES = 7;
 
@@ -48,9 +60,28 @@ export const ROLE_TABLE: Record<number, Role[]> = {
   6: ['lord', 'loyalist', 'rebel', 'rebel', 'renegade', 'renegade'],
   7: ['lord', 'loyalist', 'loyalist', 'rebel', 'rebel', 'rebel', 'renegade'],
   8: ['lord', 'loyalist', 'loyalist', 'rebel', 'rebel', 'rebel', 'renegade', 'renegade'],
+  // 1v1：先手方内部当作「主公」、后手方当作「反贼」，复用胜负判定与选将顺序（界面显示为先手 / 后手）
+  2: ['lord', 'rebel'],
 };
 /** 各人数的主公体力上限加成 */
-export const LORD_BONUS: Record<number, number> = { 5: 1, 6: 1, 7: 0, 8: 0 };
+export const LORD_BONUS: Record<number, number> = { 2: 0, 5: 1, 6: 1, 7: 0, 8: 0 };
+
+/** 1v1 对决的人数 */
+export const DUEL_PLAYERS = 2;
+export const isDuel = (players: number) => players === DUEL_PLAYERS;
+/**
+ * 1v1 不可选的武将：
+ * - 技能只作用于「其他角色」或需要多名其他角色（刘备、貂蝉、典韦、鲁肃、蔡文姬、大乔、贾诩、张角、糜竺），或永远生效过强（关羽）；
+ * - 1v1 模拟胜率偏离 50% 超过 10%（魏延、诸葛亮偏强；张辽、黄忠、庞德、郭嘉、于吉偏弱）。
+ */
+export const DUEL_BANNED = new Set([
+  'liubei', 'diaochan', 'dianwei', 'lusu', 'caiwenji', 'daqiao', 'jiaxu', 'zhangjiao', 'mizhu', 'guanyu',
+  'weiyan', 'zhugeliang', 'zhangliao', 'huangzhong', 'pangde', 'guojia', 'yuji',
+]);
+/** 1v1 选将：双方各从几名武将中选 1 名 */
+const DUEL_CHOICES = 3;
+/** 1v1 先手第一回合少摸几张 */
+export const DUEL_FIRST_DRAW_LESS = 1;
 
 /** 某角色是否属于获胜方（内奸获胜时只有存活的那名内奸算赢） */
 export function isWinner(p: Pick<Player, 'role' | 'alive'>, winner: Winner): boolean {
@@ -278,9 +309,14 @@ export class Game {
   private lastBoost = false;
   private listeners: Array<() => void> = [];
 
+  /** 1v1 对决 */
+  get duel(): boolean {
+    return isDuel(this.opts.controllers.length);
+  }
+
   constructor(private readonly opts: GameOptions) {
     if (!ROLE_TABLE[opts.controllers.length]) {
-      throw new Error(`需要 ${PLAYER_COUNTS.join(' / ')} 个控制器`);
+      throw new Error(`需要 ${[DUEL_PLAYERS, ...PLAYER_COUNTS].join(' / ')} 个控制器`);
     }
     this.rng = new Rng(opts.seed ?? Date.now());
     this.controllers = opts.controllers;
@@ -333,7 +369,7 @@ export class Game {
 
   /** 主公技：须为主公且为该武将 */
   isLord(seat: number, general: string): boolean {
-    return this.is(seat, general) && this.players[seat].role === 'lord';
+    return this.is(seat, general) && this.players[seat].role === 'lord' && !this.duel;
   }
 
   faction(seat: number) {
@@ -396,7 +432,7 @@ export class Game {
       this.opts.generals.forEach((g, seat) => (this.players[seat].general = g));
       return;
     }
-    const pool = this.rng.shuffle([...GENERAL_KEYS]);
+    const pool = this.rng.shuffle(GENERAL_KEYS.filter((g) => !this.duel || !DUEL_BANNED.has(g)));
     const take = (k: number) => pool.splice(0, k);
 
     // 主公先选，结果公开；其余玩家再选
@@ -407,7 +443,7 @@ export class Game {
     );
     for (const p of this.players) {
       if (p.seat === lordSeat) continue;
-      const options = take(OTHER_CHOICES);
+      const options = take(this.duel ? DUEL_CHOICES : OTHER_CHOICES);
       p.general = this.validChoice(await this.ask(p.seat, { type: 'chooseGeneral', options }), options);
     }
   }
@@ -652,8 +688,8 @@ export class Game {
 
   async drawPhase(p: Player): Promise<void> {
     const seat = p.seat;
-    // 断粮：本回合少摸 1 张
-    const less = this.duanliangActive ? 1 : 0;
+    // 断粮：本回合少摸 1 张；1v1 先手第一回合少摸 1 张
+    const less = (this.duanliangActive ? 1 : 0) + (this.duel && this.turn === 1 ? DUEL_FIRST_DRAW_LESS : 0);
     if (this.is(seat, 'zhugeliang')) {
       // 神算：观看 3 张，获得 2 张（断粮时 1 张），余下置于牌堆底
       const keep = 2 - less;
@@ -2075,7 +2111,7 @@ export class Game {
         seat: p.seat,
         name: p.name,
         general: p.general,
-        role: p.seat === seat || p.role === 'lord' || !p.alive || this.revealed.has(p.seat) ? p.role : null,
+        role: p.seat === seat || p.role === 'lord' || !p.alive || this.revealed.has(p.seat) || this.duel ? p.role : null,
         hp: p.hp,
         maxHp: p.maxHp,
         alive: p.alive,

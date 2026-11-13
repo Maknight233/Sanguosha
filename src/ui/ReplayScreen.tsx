@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { generalDef } from '../data/generals';
-import { ROLE_NAME, WINNER_NAME } from '../engine/game';
+import { roleLabel, winnerLabel } from '../engine/game';
 import { aiOpinions, observerOpinions, type Opinion, type Relation } from '../ai/basic';
 import { replay, viewFromSnapshot, type GameRecord, type ReplayResult, type Snapshot } from '../engine/record';
 import { InferTag, RENEGADE_MODE_NAME } from './infer';
@@ -157,6 +157,7 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
             <div key={p.seat} className="replay-seat">
               <SeatView
                 p={asPublic(p)}
+                players={snap.players.length}
                 isCurrent={snap.current === p.seat && snap.turn > 0}
                 selectable={false}
                 selected={false}
@@ -234,8 +235,8 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
         </div>
         <SoundControl />
         <div className="replay-summary">
-          <b>{WINNER_NAME[record.winner]}</b>
-          {record.winner === 'draw' ? '' : '获胜'} · 共 {record.turns} 回合 · 你是 {ROLE_NAME[record.role]}（{generalDef(record.general).name}）
+          <b>{winnerLabel(record.winner, record.names.length)}</b>
+          {record.winner === 'draw' ? '' : '获胜'} · 共 {record.turns} 回合 · 你是 {roleLabel(record.role, record.names.length)}（{generalDef(record.general).name}）
           {data.error && <div className="red">{data.error}</div>}
         </div>
         <div className="replay-perspective">
@@ -253,7 +254,7 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
               <option value="observer">旁观者（只看公开信息）</option>
               {snap.players.map((p) => (
                 <option key={p.seat} value={p.seat}>
-                  {p.seat === 0 ? '你' : p.name}（{p.general ? generalDef(p.general).name : '?'}·{ROLE_NAME[p.role]}）的 AI 视角
+                  {p.seat === 0 ? '你' : p.name}（{p.general ? generalDef(p.general).name : '?'}·{roleLabel(p.role, record.names.length)}）的 AI 视角
                 </option>
               ))}
             </select>

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { cardDef, isRed, SUIT_SYMBOL } from '../data/cards';
 import { FACTION_NAME, generalDef } from '../data/generals';
-import { ROLE_NAME, YINREN_TEXT } from '../engine/game';
+import { DUEL_BANNED, roleLabel, YINREN_TEXT } from '../engine/game';
 import type { Card, EquipSlot, PlayerPublic } from '../engine/types';
 import { CardTip, SkillTip, tipProps } from './tooltip';
 import { CardArt, GeneralArt, hasCardArt, hasGeneralArt } from './art';
@@ -59,8 +59,11 @@ export function GeneralCard({
   onClick,
   lord,
   hotkey,
+  duelNote,
 }: {
   general: string;
+  /** 规则页：标注 1v1 不可选 */
+  duelNote?: boolean;
   selected?: boolean;
   onClick?: () => void;
   lord?: boolean;
@@ -77,6 +80,7 @@ export function GeneralCard({
         <span className="faction-tag">{FACTION_NAME[g.faction]}</span>
         <b>{g.name}</b>
         <Hp hp={g.hp + (lord ? 1 : 0)} maxHp={g.hp + (lord ? 1 : 0)} />
+        {duelNote && DUEL_BANNED.has(general) && <span className="muted duel-note">1v1 不可选</span>}
       </div>
       {g.skills.map((s) => (
         <p key={s.name} className="skill-text">
@@ -140,6 +144,8 @@ export function JudgeZone({ judge }: { judge: PlayerPublic['judge'] }) {
 
 interface SeatProps {
   p: PlayerPublic;
+  /** 人数（1v1 时身份显示为先手 / 后手） */
+  players?: number;
   isCurrent: boolean;
   selectable: boolean;
   selected: boolean;
@@ -152,7 +158,7 @@ interface SeatProps {
   extra?: ReactNode;
 }
 
-export function SeatView({ p, isCurrent, selectable, selected, distance, inRange, onClick, onInfo, extra }: SeatProps) {
+export function SeatView({ p, players = 5, isCurrent, selectable, selected, distance, inRange, onClick, onInfo, extra }: SeatProps) {
   const g = p.general ? generalDef(p.general) : null;
   const dying = p.alive && p.hp <= 0;
   const cls = ['seat', g && `faction-${g.faction}`, isCurrent && 'current', !p.alive && 'dead', dying && 'dying', selectable && 'selectable', selected && 'selected']
@@ -163,7 +169,7 @@ export function SeatView({ p, isCurrent, selectable, selected, distance, inRange
       <div className="seat-top">
         <span className="seat-name">{p.name}</span>
         <span>
-          <span className={`role-badge role-${p.role ?? 'unknown'}`}>{p.role ? ROLE_NAME[p.role] : '？'}</span>
+          <span className={`role-badge role-${p.role ?? 'unknown'}`}>{p.role ? roleLabel(p.role, players) : '？'}</span>
           {onInfo && <InfoButton onClick={onInfo} />}
         </span>
       </div>

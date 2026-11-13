@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { DRAW_GAME_PILES, DRAW_PER_TURN, ROLE_NAME, YINREN_TEXT } from '../engine/game';
+import { DRAW_GAME_PILES, DRAW_PER_TURN, DUEL_BANNED, isDuel, roleLabel, YINREN_TEXT } from '../engine/game';
 import { FACTION_NAME, generalDef } from '../data/generals';
 import type { PlayerPublic } from '../engine/types';
 import { Modal } from './components';
@@ -51,6 +51,20 @@ export const RULE_TOPICS: RuleTopic[] = [
         </p>
         <p>【兽面盾】在成为【劫营】【策反】的目标时也要判定（红色则无效）。</p>
         <p>部分武将技能也与判定有关：魏延【奇袭】自己进行判定，荀彧【定策】可以改判，于吉【卜筮】可以获得别人的判定牌，吕蒙【渡江】把 ♦ 牌当【断粮】。</p>
+      </>
+    ),
+  },
+  {
+    id: 'duel',
+    title: '1v1 对决',
+    body: (
+      <>
+        <p>两人对战，没有身份，打死对方就赢。先手随机决定，先手第一回合只摸 1 张牌。</p>
+        <p>选将：先手从随机 3 名武将中选 1 名，后手看到先手的选择后，从另外 3 名中选 1 名。体力、起始手牌与身份局相同，没有主公体力加成，主公技不生效。</p>
+        <p>
+          以下武将的技能只作用于「其他角色」、需要多名其他角色，或在两人局里明显过强 / 过弱，1v1 不可选：
+          {[...DUEL_BANNED].map((g) => generalDef(g).name).join('、')}。
+        </p>
       </>
     ),
   },
@@ -125,14 +139,14 @@ function CurrentGenerals({ players, me }: { players: PlayerPublic[]; me: number 
       {players.map((p) => {
         if (!p.general) return null;
         const g = generalDef(p.general);
-        const isLord = p.role === 'lord';
+        const isLord = p.role === 'lord' && !isDuel(players.length);
         return (
           <div key={p.seat} className={`help-general ${p.alive ? '' : 'muted'}`}>
             <b>
               {p.seat === me ? '你' : p.name} · {g.name}
             </b>
             <span className="faction-tag">{FACTION_NAME[g.faction]}</span>
-            {p.role && <span className={`role-badge role-${p.role}`}>{ROLE_NAME[p.role]}</span>}
+            {p.role && <span className={`role-badge role-${p.role}`}>{roleLabel(p.role, players.length)}</span>}
             {!p.alive && '（阵亡）'}
             {g.skills.map((s) => (
               <p key={s.name} className="skill-text">

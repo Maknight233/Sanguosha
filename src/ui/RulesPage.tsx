@@ -42,7 +42,7 @@ export function RulesPage({ onBack }: { onBack: () => void }) {
       <h2>武将</h2>
       <div className="general-grid">
         {GENERAL_KEYS.map((g) => (
-          <GeneralCard key={g} general={g} />
+          <GeneralCard key={g} general={g} duelNote />
         ))}
       </div>
     </main>

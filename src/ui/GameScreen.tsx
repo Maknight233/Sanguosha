@@ -2,7 +2,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AI_LEVEL_NAME, BasicAI, observerOpinions, type AiLevel, type Opinion } from '../ai/basic';
 import { cardDef, cardText, isRed } from '../data/cards';
 import { generalDef } from '../data/generals';
-import { DRAW_GAME_PILES, Game, isWinner, ROLE_NAME, WINNER_NAME } from '../engine/game';
+import { DRAW_GAME_PILES, Game, isDuel, isWinner, ROLE_NAME, roleLabel, winnerLabel } from '../engine/game';
 import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOption, Winner } from '../engine/types';
 import { CardView, Equips, GeneralCard, Hp, InfoButton, JudgeZone, Modal, RotateHint, SeatView, SideToggle } from './components';
 import { HumanController, PacedController, PauseGate } from './controllers';
@@ -309,7 +309,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
         {speedControl}
       </aside>
       {inspect !== null && (
-        <GeneralPanel p={view.players[inspect]} isMe={inspect === HUMAN} paused={pauseOnInspect && !winner} onClose={closeInspect} />
+        <GeneralPanel p={view.players[inspect]} players={view.players.length} isMe={inspect === HUMAN} paused={pauseOnInspect && !winner} onClose={closeInspect} />
       )}
       {logOpen && (
         <Modal title="出牌记录" onClose={closeLog}>
@@ -423,6 +423,7 @@ function SeatSlot({
   return (
     <SeatView
       p={view.players[seat]}
+      players={view.players.length}
       isCurrent={view.current === seat && view.turn > 0}
       selectable={selectable}
       selected={sel.targets.includes(seat)}
@@ -661,7 +662,7 @@ function PlayerArea({
       <div className="me-info">
         <div>
           <b>{g?.name ?? '选将中'}</b>
-          {me.role && <span className={`role-badge role-${me.role}`}>{ROLE_NAME[me.role]}</span>}
+          {me.role && <span className={`role-badge role-${me.role}`}>{roleLabel(me.role, view.players.length)}</span>}
           <InfoButton onClick={onInfo} />
         </div>
         {g && <Hp hp={Math.max(me.hp, 0)} maxHp={me.maxHp} />}
@@ -813,12 +814,22 @@ function RequestModal({
       return (
         <Modal title={title}>
           <p>
-            你的身份是 <b>{ROLE_NAME[view.players[view.me].role!]}</b>。
-            {!amLord && lord.general && `主公选择了【${generalDef(lord.general).name}】。`}
+            {isDuel(view.players.length) ? (
+              <>
+                1v1 对决，你是 <b>{roleLabel(view.players[view.me].role!, 2)}</b>
+                {amLord ? '（第一回合少摸 1 张牌）' : ''}。
+                {!amLord && lord.general && `对手选择了【${generalDef(lord.general).name}】。`}
+              </>
+            ) : (
+              <>
+                你的身份是 <b>{ROLE_NAME[view.players[view.me].role!]}</b>。
+                {!amLord && lord.general && `主公选择了【${generalDef(lord.general).name}】。`}
+              </>
+            )}
           </p>
           <div className="general-grid">
             {req.options.map((g, i) => (
-              <GeneralCard key={g} general={g} lord={amLord} hotkey={hk(i)} onClick={() => answer(g)} />
+              <GeneralCard key={g} general={g} lord={amLord && !isDuel(view.players.length)} hotkey={hk(i)} onClick={() => answer(g)} />
             ))}
           </div>
         </Modal>
@@ -949,7 +960,7 @@ function GameOver({
           </>
         ) : (
           <>
-            <b>{WINNER_NAME[winner]}</b>获胜，共 {game.turn} 回合。
+            <b>{winnerLabel(winner, game.players.length)}</b>获胜，共 {game.turn} 回合。
           </>
         )}
       </p>
@@ -967,7 +978,7 @@ function GameOver({
             <tr key={p.seat}>
               <td>{p.name}</td>
               <td>{generalDef(p.general).name}</td>
-              <td>{ROLE_NAME[p.role]}</td>
+              <td>{roleLabel(p.role, game.players.length)}</td>
               <td>{p.alive ? `存活（${p.hp}/${p.maxHp}）` : '阵亡'}</td>
             </tr>
           ))}

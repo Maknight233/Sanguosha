@@ -1,4 +1,5 @@
 /** 浏览器本地存储：最近的对局记录 + 累计战绩 */
+import { isDuel } from '../engine/game';
 import type { GameRecord } from '../engine/record';
 import type { AiLevel } from '../ai/basic';
 import type { Role } from '../engine/types';
@@ -75,7 +76,8 @@ export function saveGame(rec: GameRecord, store: KV = defaultStore()): void {
     return;
   }
   stats.total = bump(stats.total, rec.won);
-  stats.byRole[rec.role] = bump(stats.byRole[rec.role], rec.won);
+  // 身份胜率只统计身份局（1v1 的先手 / 后手不算身份）
+  if (!isDuel(recordPlayers(rec))) stats.byRole[rec.role] = bump(stats.byRole[rec.role], rec.won);
   stats.byGeneral[rec.general] = bump(stats.byGeneral[rec.general], rec.won);
   const level = (rec.level ?? 'normal') as AiLevel;
   stats.byLevel = { ...stats.byLevel, [level]: bump(stats.byLevel?.[level], rec.won) };
@@ -129,7 +131,7 @@ export function saveLevel(level: AiLevel, store: KV = defaultStore()): void {
 /** 上次选择的人数 */
 export function loadPlayers(store: KV = defaultStore()): number {
   const n = Number(store.getItem(PLAYERS_KEY));
-  return n >= 5 && n <= 8 ? n : 5;
+  return (n >= 5 && n <= 8) || isDuel(n) ? n : 5;
 }
 
 export function savePlayers(n: number, store: KV = defaultStore()): void {

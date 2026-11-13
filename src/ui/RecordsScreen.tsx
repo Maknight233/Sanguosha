@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { AI_LEVEL_NAME, type AiLevel } from '../ai/basic';
 import { generalDef } from '../data/generals';
-import { PLAYER_COUNTS, ROLE_NAME, WINNER_NAME } from '../engine/game';
+import { DUEL_PLAYERS, PLAYER_COUNTS, ROLE_NAME, roleLabel, winnerLabel } from '../engine/game';
 import type { GameRecord } from '../engine/record';
 import type { Role } from '../engine/types';
 import { addImported, clearStats, loadImported, loadRecords, loadStats, MAX_RECORDS, recordPlayers, removeImported, replaceAll, winRate, type Stats } from './storage';
@@ -9,6 +9,7 @@ import { backupFile, download, parseImport, recordFile, stamp } from './transfer
 
 const ROLES: Role[] = ['lord', 'loyalist', 'rebel', 'renegade'];
 const LEVELS = Object.keys(AI_LEVEL_NAME) as AiLevel[];
+const playersLabel = (n: number) => (n === DUEL_PLAYERS ? '1v1' : `${n} 人`);
 const levelName = (l?: string) => AI_LEVEL_NAME[(l ?? 'normal') as AiLevel] ?? l;
 
 function formatDate(ms: number): string {
@@ -92,7 +93,7 @@ export function RecordsScreen({ onBack, onReplay }: { onBack: () => void; onRepl
             <table>
               <thead>
                 <tr>
-                  <th>身份</th>
+                  <th>身份（身份局）</th>
                   <th>局数</th>
                   <th>胜率</th>
                 </tr>
@@ -134,9 +135,9 @@ export function RecordsScreen({ onBack, onReplay }: { onBack: () => void; onRepl
                 </tr>
               </thead>
               <tbody>
-                {PLAYER_COUNTS.map((n) => (
+                {[...PLAYER_COUNTS, DUEL_PLAYERS].map((n) => (
                   <tr key={n}>
-                    <td>{n} 人</td>
+                    <td>{playersLabel(n)}</td>
                     <td>{stats.byPlayers?.[n]?.games ?? 0}</td>
                     <td>{winRate(stats.byPlayers?.[n])}</td>
                   </tr>
@@ -242,11 +243,11 @@ function RecordTable({ records, actions, imported }: { records: GameRecord[]; ac
               {imported && <span className="import-tag">导入</span>}
             </td>
             <td>{generalDef(r.general).name}</td>
-            <td>{ROLE_NAME[r.role]}</td>
-            <td>{recordPlayers(r)}</td>
+            <td>{roleLabel(r.role, recordPlayers(r))}</td>
+            <td>{playersLabel(recordPlayers(r))}</td>
             <td>{levelName(r.level)}</td>
             <td className={r.won ? 'win' : 'muted'}>
-              {r.winner === 'draw' ? '平局' : `${r.won ? '胜' : '负'}（${WINNER_NAME[r.winner]}获胜）`}
+              {r.winner === 'draw' ? '平局' : `${r.won ? '胜' : '负'}（${winnerLabel(r.winner, recordPlayers(r))}获胜）`}
             </td>
             <td>{r.turns}</td>
             <td className="record-actions">{actions(r)}</td>

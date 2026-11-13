@@ -329,7 +329,8 @@ class Brain {
 
   /** 潜伏型反贼：开局几轮内不暴露，有人阵亡、主公体力低、自己濒危或轮数到了就结束 */
   lurking(): boolean {
-    if (!DISGUISE_TUNING.enabled || this.level === 'easy' || this.observer || this.me.role !== 'rebel') return false;
+    // 1v1 没有身份可隐藏
+    if (!DISGUISE_TUNING.enabled || this.level === 'easy' || this.observer || this.me.role !== 'rebel' || this.view.players.length === 2) return false;
     const v = this.view;
     const n = v.players.length;
     const lurker = hash(`lurk|${this.me.seat}|${v.players.map((p) => p.general).join(',')}`) % 1000 < DISGUISE_TUNING.rebelLurkChance * 1000;

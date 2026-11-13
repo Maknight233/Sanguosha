@@ -13,6 +13,7 @@ export interface TableSides {
 
 /** 各人数下右 / 上 / 左三边各放几个座位（不含玩家） */
 const SIDE_COUNTS: Record<number, [number, number, number]> = {
+  2: [0, 1, 0],
   5: [1, 2, 1],
   6: [1, 3, 1],
   7: [2, 2, 2],
