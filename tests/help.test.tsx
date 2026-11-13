@@ -49,6 +49,8 @@ describe('提示与速查面板（界面）', () => {
     render(<GameScreen onExit={() => {}} aiDelay={0} seed={77} />);
     for (let i = 0; i < 50 && !document.querySelector('.general-card.clickable'); i++) await tick();
     fireEvent.click(document.querySelector<HTMLElement>('.general-card.clickable')!);
+    for (let i = 0; i < 50 && !screen.queryByText('刷牌'); i++) await tick();
+    fireEvent.click(screen.getByText('确定'));
     for (let i = 0; i < 50 && !document.querySelector('.tip-bubble'); i++) await tick();
   }
 

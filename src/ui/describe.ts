@@ -72,6 +72,8 @@ export function describeRequest(view: GameView, req: Request): string {
       break;
     case 'orderCards':
       return '【谋算】：依次点击，决定放回牌堆顶的顺序（先点的在最上面）';
+    case 'mulligan':
+      return '刷牌：不满意可以重新摸起始手牌';
     case 'respond': {
       const r = req.reason;
       const pair =

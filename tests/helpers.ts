@@ -32,6 +32,8 @@ export class Scripted implements Controller {
         return req.cards.slice(0, req.count).map((c) => c.id) as Response<R>;
       case 'orderCards':
         return req.cards.map((c) => c.id) as Response<R>;
+      case 'mulligan':
+        return false as Response<R>;
     }
     throw new Error('unreachable');
   }

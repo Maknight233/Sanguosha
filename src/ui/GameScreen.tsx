@@ -57,7 +57,7 @@ function createSession(delay: () => number, level: AiLevel, players: number, see
   const answers: Answer[] = [];
   const s = seed ?? Math.floor(Math.random() * 1e9);
   const controllers = [human, ...ais].map((c, seat) => new RecordingController(c, seat, answers));
-  const game = new Game({ controllers, names, seed: s });
+  const game = new Game({ controllers, names, seed: s, mulligan: [HUMAN] });
   return { game, human, ais, gate, pauseOnInspect: true, seed: s, answers, level, names, run: () => game.start() };
 }
 
@@ -88,6 +88,7 @@ function makeRecord(s: Session, winner: Winner): GameRecord {
     level: s.level,
     logLength: s.game.log.length,
     ...(s.game.resigned ? { resign: s.game.resigned } : {}),
+    ...(s.director ? {} : { mulligan: [HUMAN] }),
   };
 }
 
@@ -845,6 +846,10 @@ function RequestModal({
       return true;
     }
     if (pickLimit > 0 && a.type === 'cancel') return setPicked([]), true;
+    if (req.type === 'mulligan') {
+      if (a.type === 'confirm') return answer(false), true;
+      if (a.type === 'skill' && SKILL_KEYS[a.index] === 'r') return answer(true), true;
+    }
     return a.type === 'confirm' || a.type === 'nextTarget';
   }, keysEnabled);
   const hk = (i: number) => indexKey(i);
@@ -947,6 +952,25 @@ function RequestModal({
           <button className="primary" disabled={picked.length !== req.cards.length} onClick={() => answer(picked)} data-key="空格">
             确定
           </button>
+        </Modal>
+      );
+    case 'mulligan':
+      return (
+        <Modal title={title}>
+          <p className="muted">把手牌全部洗回牌堆，重新摸 {view.players[view.me].hand?.length ?? 4} 张；次数不限。满意后点「确定」开始游戏。</p>
+          <div className="hand">
+            {(view.players[view.me].hand ?? []).map((c) => (
+              <CardView key={c.id} card={c} />
+            ))}
+          </div>
+          <div className="choice-row">
+            <button onClick={() => answer(true)} data-key="R">
+              刷牌
+            </button>
+            <button className="primary" onClick={() => answer(false)} data-key="空格">
+              确定
+            </button>
+          </div>
         </Modal>
       );
     default:

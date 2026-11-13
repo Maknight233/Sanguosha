@@ -244,6 +244,8 @@ export interface GameOptions {
   maxTurns?: number;
   /** 关闭全部武将技能（用于测试基础规则） */
   disableSkills?: boolean;
+  /** 开局可以刷牌的座位（玩家本人；电脑不刷） */
+  mulligan?: number[];
   /** 回放用：第 at 次询问回答后，seat 认输（2v2） */
   resign?: Resignation;
 }
@@ -456,9 +458,24 @@ export class Game {
     this.drawPile = this.rng.shuffle(buildDeck());
     this.discardPile = [];
     for (let i = 0; i < n; i++) this.drawCards(this.players[(lordSeat + i) % n], INITIAL_HAND, true);
+    for (const seat of this.opts.mulligan ?? []) await this.mulliganPhase(seat);
 
     this.current = lordSeat;
     this.addLog(`对局开始。主公是 ${this.who(lordSeat)}。`);
+  }
+
+  /** 刷牌：手牌洗回牌堆，重新摸起始手牌；次数不限 */
+  private async mulliganPhase(seat: number): Promise<void> {
+    const p = this.players[seat];
+    let times = 0;
+    while ((await this.ask(seat, { type: 'mulligan' })) === true) {
+      this.drawPile.push(...p.hand.splice(0));
+      this.drawPile = this.rng.shuffle(this.drawPile);
+      this.drawCards(p, INITIAL_HAND, true);
+      times++;
+      this.emit();
+    }
+    if (times > 0) this.addLog(`${this.who(seat)} 刷新了 ${times} 次起始手牌。`);
   }
 
   private async chooseGenerals(lordSeat: number): Promise<void> {

@@ -112,6 +112,8 @@ describe('读局：对局界面', () => {
     const tick = () => act(() => new Promise((r) => setTimeout(r, 0)));
     for (let i = 0; i < 50 && !document.querySelector('.general-card.clickable'); i++) await tick();
     fireEvent.click(document.querySelector<HTMLElement>('.general-card.clickable')!);
+    for (let i = 0; i < 50 && !screen.queryByText('刷牌'); i++) await tick();
+    fireEvent.keyDown(window, { key: ' ' });
     for (let i = 0; i < 200 && !/第 [1-9]/.test(document.querySelector('.center-info')?.textContent ?? ''); i++) await tick();
     expect(document.querySelectorAll('.infer-row')).toHaveLength(0);
     fireEvent.keyDown(window, { key: 'i' });

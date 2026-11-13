@@ -35,6 +35,8 @@ export interface GameRecord {
   logLength: number;
   /** 2v2 认输 */
   resign?: Resignation;
+  /** 开局可以刷牌的座位（旧记录没有，即不刷牌） */
+  mulligan?: number[];
 }
 
 /** 包装控制器：把每次回答按顺序写入共享列表 */
@@ -190,6 +192,7 @@ export async function replay(rec: GameRecord): Promise<ReplayResult> {
     seed: rec.seed,
     maxTurns: rec.turns + 5,
     resign: rec.resign,
+    mulligan: rec.mulligan,
   });
   const snapshots: Snapshot[] = [];
   game.subscribe(() => {

@@ -55,6 +55,8 @@ export class RandomController implements Controller {
         return this.rng.shuffle(req.cards.map((c) => c.id)).slice(0, req.count);
       case 'orderCards':
         return this.rng.shuffle(req.cards.map((c) => c.id));
+      case 'mulligan':
+        return false;
     }
   }
 

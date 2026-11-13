@@ -226,6 +226,8 @@ class Brain {
         return this.best(req.cards, req.count).map((c) => c.id);
       case 'orderCards':
         return this.best(req.cards, req.cards.length).map((c) => c.id);
+      case 'mulligan':
+        return false;
     }
   }
 

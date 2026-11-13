@@ -212,6 +212,8 @@ function fallback(view: GameView, req: Request): Response<Request> {
       return req.cards.slice(0, req.count).map((c) => c.id);
     case 'orderCards':
       return req.cards.map((c) => c.id);
+    case 'mulligan':
+      return false;
   }
 }
 

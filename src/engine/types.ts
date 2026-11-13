@@ -153,7 +153,9 @@ export type Request =
   /** pindian：拼点时选一张手牌；附带对手、是否为发起者、技能名 */
   | { type: 'selectCards'; cards: Card[]; count: number; reason: 'mousuan' | 'shensuan' | 'xiaoyong' | 'huoxin' | 'duoxie' | 'pindian'; pindian?: PindianInfo }
   /** 将牌排序放回牌堆顶，返回的第一张在最上面 */
-  | { type: 'orderCards'; cards: Card[]; reason: 'mousuan' };
+  | { type: 'orderCards'; cards: Card[]; reason: 'mousuan' }
+  /** 刷牌：开局发完起始手牌后询问，回答 true 刷新全部手牌（可反复），false 开始游戏 */
+  | { type: 'mulligan' };
 
 /** 拼点请求的上下文 */
 export interface PindianInfo {
@@ -178,6 +180,7 @@ export interface ResponseMap {
   choose: string;
   selectCards: number[];
   orderCards: number[];
+  mulligan: boolean;
 }
 
 export type Response<R extends Request> = ResponseMap[R['type']];
