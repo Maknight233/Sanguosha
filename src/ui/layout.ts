@@ -1,5 +1,5 @@
 /**
- * 牌桌座位布局：玩家（0 号位）在下方，其余座位从玩家右手边开始逆时针环绕——
+ * 牌桌座位布局：玩家（me，单机为 0 号位）在下方，其余座位从玩家右手边开始逆时针环绕——
  * 右侧（从下往上）→ 上方（从右往左）→ 左侧（从上往下）。座位的相对位置就是距离关系。
  */
 export interface TableSides {
@@ -20,9 +20,9 @@ const SIDE_COUNTS: Record<number, [number, number, number]> = {
   8: [2, 3, 2],
 };
 
-export function tableSides(players: number): TableSides {
+export function tableSides(players: number, me = 0): TableSides {
   const [r, t] = SIDE_COUNTS[players] ?? [1, players - 3, 1];
-  const others = Array.from({ length: players - 1 }, (_, i) => i + 1);
+  const others = Array.from({ length: players - 1 }, (_, i) => (me + i + 1) % players);
   return { right: others.slice(0, r), top: others.slice(r, r + t), left: others.slice(r + t) };
 }
 

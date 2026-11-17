@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { AI_LEVEL_NAME, BasicAI, observerOpinions, type AiLevel, type Opinion } from '../ai/basic';
 import { cardDef, cardText, isRed } from '../data/cards';
 import { generalDef } from '../data/generals';
 import { DRAW_GAME_PILES, Game, isDuel, isTeam, isVersus, isWinner, ROLE_NAME, roleLabel, winnerLabel } from '../engine/game';
-import type { Card, CardPick, GameView, PlayOption, Request, Response, SkillOption, Winner } from '../engine/types';
+import type { Card, CardPick, GameView, LogEntry, PlayOption, Request, Response, SkillOption, Winner } from '../engine/types';
 import { CardView, Equips, GeneralCard, Hp, InfoButton, JudgeZone, Modal, roleBadgeClass, RotateHint, SeatView, SideToggle } from './components';
 import { HumanController, PacedController, PauseGate } from './controllers';
 import { RECORD_VERSION, RecordingController, type Answer, type GameRecord } from '../engine/record';
@@ -19,7 +19,9 @@ import { dyingSeats, EffectsLayer, PlayZone } from './effects';
 import { isCrowded, seatNames, tableSides } from './layout';
 import { createTutorial, TUTORIAL_NAMES, TUTORIAL_STEPS, type TutorialDirector } from './tutorial';
 import { autoPickForRespond, autoTargetsForOption, autoTargetsForSkill, indexKey, SKILL_KEYS, useHotkeys, type KeyAction } from './hotkeys';
+import { LocalTable, type TableClient, type TableOver, type TableSnapshot } from './table';
 
+/** 单机时玩家固定坐 0 号位 */
 const HUMAN = 0;
 const PHASE_NAME: Record<string, string> = {
   setup: '选将',
@@ -32,12 +34,13 @@ const PHASE_NAME: Record<string, string> = {
 };
 
 interface Session {
+  /** 每局不同，用作牌桌界面的 key */
+  id: number;
   game: Game;
   human: HumanController;
+  table: LocalTable;
   ais: PacedController[];
   gate: PauseGate;
-  /** 查看武将详情时是否暂停：单机对 AI 时开启；以后联网与真人对局时应关闭 */
-  pauseOnInspect: boolean;
   seed: number;
   /** 所有人的回答，按顺序（用于保存回放） */
   answers: Answer[];
@@ -49,7 +52,7 @@ interface Session {
   director?: TutorialDirector;
 }
 
-function createSession(delay: () => number, level: AiLevel, players: number, seed?: number): Session {
+function createSession(id: number, delay: () => number, level: AiLevel, players: number, seed?: number): Session {
   const human = new HumanController();
   const gate = new PauseGate();
   const names = seatNames(players);
@@ -58,15 +61,17 @@ function createSession(delay: () => number, level: AiLevel, players: number, see
   const s = seed ?? Math.floor(Math.random() * 1e9);
   const controllers = [human, ...ais].map((c, seat) => new RecordingController(c, seat, answers));
   const game = new Game({ controllers, names, seed: s, mulligan: [HUMAN] });
-  return { game, human, ais, gate, pauseOnInspect: true, seed: s, answers, level, names, run: () => game.start() };
+  const table = new LocalTable(game, human, HUMAN);
+  return { id, game, human, table, ais, gate, seed: s, answers, level, names, run: () => game.start() };
 }
 
 /** 新手教学局：固定剧本，不记录回答 */
-function createTutorialSession(delay: () => number): Session {
+function createTutorialSession(id: number, delay: () => number): Session {
   const human = new HumanController();
   const gate = new PauseGate();
   const t = createTutorial(human, delay, gate);
-  return { game: t.game, human, ais: t.ais, gate, pauseOnInspect: true, seed: 1, answers: [], level: 'normal', names: TUTORIAL_NAMES, run: t.run, director: t.director };
+  const table = new LocalTable(t.game, human, HUMAN);
+  return { id, game: t.game, human, table, ais: t.ais, gate, seed: 1, answers: [], level: 'normal', names: TUTORIAL_NAMES, run: t.run, director: t.director };
 }
 
 /** 对局结束后生成记录 */
@@ -109,17 +114,91 @@ interface GameScreenProps {
   onTutorialPlay?: () => void;
 }
 
+/** 单机对局：本机跑引擎，玩家对电脑 */
 export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, aiDelay, seed, tutorial, onTutorialPlay }: GameScreenProps) {
   const [round, setRound] = useState(0);
   const [session, setSession] = useState<Session | null>(null);
-  const [winner, setWinner] = useState<Winner | null>(null);
-  /** 2v2 认输确认框 */
-  const [confirmResign, setConfirmResign] = useState(false);
   const [record, setRecord] = useState<GameRecord | null>(null);
   const [speed, setSpeed] = useState(aiDelay ?? 600);
   const speedRef = useRef(speed);
   speedRef.current = speed;
+
+  useEffect(() => {
+    const delay = () => speedRef.current;
+    const s = tutorial ? createTutorialSession(round, delay) : createSession(round, delay, level, players, seed === undefined ? undefined : seed + round);
+    setSession(s);
+    setRecord(null);
+    // 只保存正常打完的局（中途重新开始/返回菜单的不保存）；教学局不保存
+    s.run().then((w) => {
+      if (s.human.cancelled) return;
+      if (!s.director) {
+        const rec = makeRecord(s, w);
+        saveGame(rec);
+        setRecord(rec);
+      }
+      s.table.finish(w);
+    }, (e) => console.error(e));
+    return () => {
+      s.table.dispose();
+      s.human.cancelled = true;
+      s.ais.forEach((a) => (a.cancelled = true));
+    };
+  }, [round]);
+
+  if (!session) return null;
+  const again = () => setRound((r) => r + 1);
+  return (
+    <TableScreen
+      key={session.id}
+      table={session.table}
+      gate={session.gate}
+      director={session.director}
+      label={session.director ? '新手教程' : `AI ${AI_LEVEL_NAME[level]}`}
+      speed={{ value: speed, set: setSpeed }}
+      sideButtons={
+        <>
+          <button onClick={again}>重新开始</button>
+          <button onClick={onExit}>返回菜单</button>
+        </>
+      }
+      onAgain={again}
+      onExit={onExit}
+      onReplay={onReplay && record ? () => onReplay(record) : undefined}
+      onTutorialPlay={onTutorialPlay}
+    />
+  );
+}
+
+export interface TableScreenProps {
+  table: TableClient;
+  /** 本机对电脑时的暂停闸门：打开面板时暂停；联机（对真人）不传，从不暂停 */
+  gate?: PauseGate;
+  director?: TutorialDirector;
+  /** 中央信息栏里的说明，如「AI 普通」 */
+  label: string;
+  /** AI 速度（本机） */
+  speed?: { value: number; set: (ms: number) => void };
+  /** 侧栏顶部的按钮（重新开始、返回菜单等） */
+  sideButtons: ReactNode;
+  /** 中央信息栏下方的额外内容（如联机倒计时） */
+  centerExtra?: ReactNode;
+  /** 结算画面「再来一局」；不传则不显示 */
+  onAgain?: () => void;
+  onExit: () => void;
+  onReplay?: () => void;
+  onTutorialPlay?: () => void;
+}
+
+/** 牌桌界面：只读座位快照，单机与联机共用 */
+export function TableScreen({ table, gate, director, label, speed, sideButtons, centerExtra, onAgain, onExit, onReplay, onTutorialPlay }: TableScreenProps) {
   const [, rerender] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => {
+    const unsubs = [table.subscribe(rerender)];
+    if (director) unsubs.push(director.subscribe(rerender));
+    return () => unsubs.forEach((u) => u());
+  }, [table, director]);
+  /** 2v2 认输确认框 */
+  const [confirmResign, setConfirmResign] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
   const [inspect, setInspect] = useState<number | null>(null);
   const [help, setHelp] = useState(false);
@@ -137,6 +216,10 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
     if (t.closest('button') && !t.closest('.sound-control, .speed')) setSideOpen(false);
   };
   const panelOpen = inspect !== null || help || logOpen;
+  /** 对电脑时打开面板暂停；对真人（没有闸门）不暂停 */
+  const pauseOnInspect = !!gate;
+  const pause = () => gate?.pause();
+  const resume = () => gate?.resume();
   // 面板（武将详情 / 规则速查）打开时：Esc 关闭面板，其他快捷键不生效；没有面板时 F1 / ? 打开速查
   useHotkeys((a) => {
     if (!panelOpen) {
@@ -144,100 +227,74 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
         toggleInfer();
         return true;
       }
-      if (a.type === 'log' && session) {
-        if (session.pauseOnInspect) session.gate.pause();
+      if (a.type === 'log') {
+        pause();
         setLogOpen(true);
         return true;
       }
-      if (a.type !== 'help' || !session) return false;
-      if (session.pauseOnInspect) session.gate.pause();
+      if (a.type !== 'help') return false;
+      pause();
       setHelp(true);
       return true;
     }
     if (a.type !== 'cancel') return a.type === 'confirm' || a.type === 'nextTarget' || a.type === 'help' || a.type === 'log';
-    session?.gate.resume();
+    resume();
     setInspect(null);
     setHelp(false);
     setLogOpen(false);
     return true;
   });
 
-  useEffect(() => {
-    const s = tutorial ? createTutorialSession(() => speedRef.current) : createSession(() => speedRef.current, level, players, seed === undefined ? undefined : seed + round);
-    setSession(s);
-    setWinner(null);
-    setConfirmResign(false);
-    setRecord(null);
-    setInspect(null);
-    setHelp(false);
-    setLogOpen(false);
-    const unsubs = [s.game.subscribe(rerender), s.human.subscribe(rerender)];
-    if (s.director) unsubs.push(s.director.subscribe(rerender));
-    // 只保存正常打完的局（中途重新开始/返回菜单的不保存）；教学局不保存
-    s.run().then((w) => {
-      if (s.human.cancelled) return;
-      if (!s.director) {
-        const rec = makeRecord(s, w);
-        saveGame(rec);
-        setRecord(rec);
-      }
-      setWinner(w);
-    }, (e) => console.error(e));
-    return () => {
-      unsubs.forEach((u) => u());
-      s.human.cancelled = true;
-      s.ais.forEach((a) => (a.cancelled = true));
-    };
-  }, [round]);
-
-  if (!session) return null;
-  const { game, human, gate, pauseOnInspect, director } = session;
+  const snap = table.snapshot();
+  const { view, log, over } = snap;
+  const me = snap.me;
+  const winner = over?.winner ?? null;
   const openInspect = (seat: number) => {
-    if (pauseOnInspect) gate.pause();
+    pause();
     setInspect(seat);
   };
   const closeInspect = () => {
-    gate.resume();
+    resume();
     setInspect(null);
   };
   const openHelp = () => {
-    if (pauseOnInspect) gate.pause();
+    pause();
     setHelp(true);
   };
   const closeHelp = () => {
-    gate.resume();
+    resume();
     setHelp(false);
   };
   const openLog = () => {
-    if (pauseOnInspect) gate.pause();
+    pause();
     setLogOpen(true);
   };
   const closeLog = () => {
-    gate.resume();
+    resume();
     setLogOpen(false);
   };
-  const view = game.view(HUMAN);
   // 读局：旁观者视角（只用公开信息，不带入你的身份）
   const opinions = infer && view.turn > 0 ? observerOpinions(view) : null;
-  const pending = human.pending;
-  const dying = dyingSeats(game.players);
+  const pending = snap.pending;
+  const pendingKey = pending ? JSON.stringify(pending) + log.length : null;
+  const dying = dyingSeats(view.players);
   const shortName = (s: number) => {
     const p = view.players[s];
-    if (s === HUMAN) return '你';
+    if (s === me) return '你';
     return p.general ? generalDef(p.general).name : p.name;
   };
 
   // 大屏显示在牌桌中央，小屏收进侧栏抽屉（两处由样式控制只显示一处）
-  const speedControl = (
+  const speedControl = speed && (
     <div className="speed">
       AI 速度：
       {[
         ['快', 150],
         ['中', 600],
         ['慢', 1200],
-      ].map(([label, ms]) => (
-        <button key={label} className={speed === ms ? 'active' : ''} onClick={() => setSpeed(ms as number)}>
-          {label}
+      ].map(([text, ms]) => (
+        <button key={text} className={speed.value === ms ? 'active' : ''} onClick={() => speed.set(ms as number)}>
+          {text}
         </button>
       ))}
     </div>
@@ -248,8 +305,8 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
       <div className={`table ${isCrowded(view.players.length) ? 'crowded' : ''}`} ref={tableRef}>
         {(['right', 'top', 'left'] as const).map((side) => (
           <div key={side} className={`seat-row seat-row-${side}`}>
-            {tableSides(view.players.length)[side].map((seat) => (
-              <SeatSlot key={seat} game={game} view={view} seat={seat} pending={pending?.req ?? null} onInfo={() => openInspect(seat)} opinion={opinions?.[seat] ?? null} />
+            {tableSides(view.players.length, me)[side].map((seat) => (
+              <SeatSlot key={seat} snap={snap} seat={seat} onInfo={() => openInspect(seat)} opinion={opinions?.[seat] ?? null} />
             ))}
           </div>
         ))}
@@ -263,43 +320,39 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
                   （已摸光 {view.pileExhausted}/{DRAW_GAME_PILES} 次）
                 </span>
               )}{' '}
-              · 弃牌堆 {view.discardPileCount} 张 · {director ? '新手教程' : `AI ${AI_LEVEL_NAME[level]}`}
+              · 弃牌堆 {view.discardPileCount} 张 · {label}
             </div>
+            {centerExtra}
           </div>
           {dying.map((s) => (
             <div key={s} className="dying-banner">
               {shortName(s)} 濒死，求【药】！
             </div>
           ))}
-          <PlayZone log={game.log} shortName={shortName} />
+          <PlayZone log={log} shortName={shortName} />
           {speedControl}
         </div>
         <div className="area-me">
           <PlayerArea
-            key={pending ? JSON.stringify(pending.req) + game.log.length : 'idle'}
+            key={pendingKey ?? 'idle'}
             view={view}
-            human={human}
+            req={pending}
+            table={table}
             keysEnabled={!panelOpen && !winner}
-            onInfo={() => openInspect(HUMAN)}
-            opinion={opinions?.[HUMAN] ?? null}
+            onInfo={() => openInspect(me)}
+            opinion={opinions?.[me] ?? null}
           />
         </div>
-        <EffectsLayer key={round} log={game.log} container={tableRef} />
-        <SoundLayer
-          key={`sound-${round}`}
-          log={game.log}
-          pendingKey={pending ? JSON.stringify(pending.req) + game.log.length : null}
-          result={winner && winner !== 'draw' ? (isWinner(game.players[HUMAN], winner) ? 'win' : 'lose') : null}
-        />
-        {!winner && !panelOpen && !director && <TipLayer key={`tip-${round}`} view={view} req={pending?.req ?? null} />}
+        <EffectsLayer log={log} container={tableRef} />
+        <SoundLayer log={log} pendingKey={pendingKey} result={over && winner !== 'draw' ? (isWinner(over.players[me], over.winner) ? 'win' : 'lose') : null} />
+        {!winner && !panelOpen && !director && <TipLayer view={view} req={pending} />}
         {director && !panelOpen && <TutorialLayer director={director} />}
       </div>
       <RotateHint onExit={onExit} />
       <SideToggle open={sideOpen} onToggle={() => setSideOpen((o) => !o)} />
       <aside className={`side ${sideOpen ? 'open' : ''}`} onClick={closeSideOnAction}>
         <div className="side-buttons">
-          <button onClick={() => setRound((r) => r + 1)}>重新开始</button>
-          <button onClick={onExit}>返回菜单</button>
+          {sideButtons}
           <button className={`infer-toggle ${infer ? 'active' : ''}`} onClick={toggleInfer} title="读局：显示 AI 视角对身份的推测 (I)" data-key="I">
             读局
           </button>
@@ -307,14 +360,14 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
             ?
           </button>
         </div>
-        <button className="log-open" onClick={openLog} title="查看出牌记录（L）；单机时游戏暂停" data-key="L">
+        <button className="log-open" onClick={openLog} title={pauseOnInspect ? '查看出牌记录（L）；单机时游戏暂停' : '查看出牌记录（L）'} data-key="L">
           出牌记录
         </button>
-        {!winner && game.canResign(HUMAN) && (
+        {!winner && snap.canResign && (
           <button
             className="resign-btn"
             onClick={() => {
-              gate.pause();
+              pause();
               setConfirmResign(true);
             }}
           >
@@ -325,17 +378,17 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
         {speedControl}
       </aside>
       {inspect !== null && (
-        <GeneralPanel p={view.players[inspect]} players={view.players.length} isMe={inspect === HUMAN} paused={pauseOnInspect && !winner} onClose={closeInspect} />
+        <GeneralPanel p={view.players[inspect]} players={view.players.length} isMe={inspect === me} paused={pauseOnInspect && !winner} onClose={closeInspect} />
       )}
       {logOpen && (
         <Modal title="出牌记录" onClose={closeLog}>
           <div className="log-modal">
             {pauseOnInspect && !winner && <div className="paused-tag">游戏已暂停，关闭后继续（Esc）</div>}
-            <LogPanel game={game} />
+            <LogPanel log={log} me={me} turn={view.turn} />
           </div>
         </Modal>
       )}
-      {help && <HelpPanel players={view.players} me={HUMAN} paused={pauseOnInspect && !winner} onClose={closeHelp} />}
+      {help && <HelpPanel players={view.players} me={me} paused={pauseOnInspect && !winner} onClose={closeHelp} />}
       <TooltipHost />
       {director?.finished && !panelOpen && (
         <Modal title="教程完成">
@@ -359,10 +412,8 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
               className="primary"
               onClick={() => {
                 setConfirmResign(false);
-                game.resign(HUMAN);
-                gate.resume();
-                // 正在等你操作时，随便交一个回答让引擎继续（认输在回答后立即生效）
-                human.answer(null);
+                table.resign();
+                resume();
               }}
             >
               确定认输
@@ -370,7 +421,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
             <button
               onClick={() => {
                 setConfirmResign(false);
-                gate.resume();
+                resume();
               }}
             >
               继续打
@@ -378,16 +429,7 @@ export function GameScreen({ onExit, onReplay, level = 'normal', players = 5, ai
           </div>
         </Modal>
       )}
-      {winner && !logOpen && (
-        <GameOver
-          game={game}
-          winner={winner}
-          onAgain={() => setRound((r) => r + 1)}
-          onExit={onExit}
-          onReplay={onReplay && record ? () => onReplay(record) : undefined}
-          onLog={openLog}
-        />
-      )}
+      {over && !logOpen && <GameOver over={over} me={me} onAgain={onAgain} onExit={onExit} onReplay={onReplay} onLog={openLog} />}
     </div>
   );
 }
@@ -445,24 +487,10 @@ function clickSeat(req: Request | null, sel: Selection, seat: number) {
   setSelection({ ...sel, targets: [t0, seat] });
 }
 
-function SeatSlot({
-  game,
-  view,
-  seat,
-  pending,
-  onInfo,
-  opinion,
-}: {
-  game: Game;
-  view: GameView;
-  seat: number;
-  pending: Request | null;
-  onInfo: () => void;
-  opinion: Opinion | null;
-}) {
+function SeatSlot({ snap, seat, onInfo, opinion }: { snap: TableSnapshot; seat: number; onInfo: () => void; opinion: Opinion | null }) {
+  const { view, pending } = snap;
   const sel = useSelection();
   const selectable = selectableSeats(pending, sel).includes(seat);
-  const alive = view.players[HUMAN].alive && view.players[seat].alive;
   return (
     <SeatView
       p={view.players[seat]}
@@ -470,8 +498,8 @@ function SeatSlot({
       isCurrent={view.current === seat && view.turn > 0}
       selectable={selectable}
       selected={sel.targets.includes(seat)}
-      distance={alive ? game.distance(HUMAN, seat) : null}
-      inRange={alive && game.inAttackRange(HUMAN, seat)}
+      distance={snap.distance[seat]}
+      inRange={snap.inRange[seat]}
       onClick={() => clickSeat(pending, sel, seat)}
       onInfo={onInfo}
       extra={opinion && <InferTag view={view} seat={seat} op={opinion} />}
@@ -554,20 +582,21 @@ function TutorialLayer({ director }: { director: TutorialDirector }) {
 
 function PlayerArea({
   view,
-  human,
+  req,
+  table,
   keysEnabled,
   onInfo,
   opinion,
 }: {
   view: GameView;
-  human: HumanController;
+  req: Request | null;
+  table: TableClient;
   keysEnabled: boolean;
   onInfo: () => void;
   opinion: Opinion | null;
 }) {
-  const me = view.players[HUMAN];
+  const me = view.players[view.me];
   const hand = me.hand ?? [];
-  const req = human.pending?.req ?? null;
   const sel = useSelection();
 
   // 新的请求到来时清空选择；响应时若只有一张能出的牌则预先选中
@@ -575,7 +604,7 @@ function PlayerArea({
 
   const answer = (r: Response<Request>) => {
     setSelection(EMPTY);
-    human.answer(r);
+    table.answer(r);
   };
 
   const cardOption = (id: number) => (req?.type === 'play' ? req.options.find((o) => o.cardId === id) : undefined);
@@ -699,8 +728,8 @@ function PlayerArea({
 
   return (
     <div
-      data-seat={HUMAN}
-      className={`player-area ${view.current === HUMAN && view.turn > 0 ? 'current' : ''} ${me.alive ? '' : 'dead'} ${me.alive && me.hp <= 0 ? 'dying' : ''}`}
+      data-seat={view.me}
+      className={`player-area ${view.current === view.me && view.turn > 0 ? 'current' : ''} ${me.alive ? '' : 'dead'} ${me.alive && me.hp <= 0 ? 'dying' : ''}`}
     >
       <div className="me-info">
         <div>
@@ -778,7 +807,7 @@ function PlayerArea({
               title="这张群体锦囊剩下的目标都不再询问；有人出【识破】时仍会问你是否反制"
               onClick={() => {
                 setSelection(EMPTY);
-                human.skipShipo((req.reason as { trickId: number }).trickId);
+                table.skipShipo((req.reason as { trickId: number }).trickId);
               }}
             >
               不识破此【{cardDef(req.reason.trick).name}】
@@ -980,14 +1009,14 @@ function RequestModal({
 
 // ───────────── 日志与结算 ─────────────
 
-function LogPanel({ game }: { game: Game }) {
+function LogPanel({ log, me, turn }: { log: LogEntry[]; me: number; turn: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [filter, setFilter] = useState<LogFilter>('all');
-  const n = game.log.length;
+  const n = log.length;
   useEffect(() => {
     if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
   }, [n, filter]);
-  const entries = useMemo(() => filterLog(game.log, filter, HUMAN, game.turn).slice(-300), [n, game, filter]);
+  const entries = useMemo(() => filterLog(log, filter, me, turn).slice(-300), [n, log, filter]);
   return (
     <>
       <div className="log-filters">
@@ -1010,33 +1039,34 @@ function LogPanel({ game }: { game: Game }) {
 }
 
 function GameOver({
-  game,
-  winner,
+  over,
+  me: seat,
   onAgain,
   onExit,
   onReplay,
   onLog,
 }: {
-  game: Game;
-  winner: Winner;
-  onAgain: () => void;
+  over: TableOver;
+  me: number;
+  onAgain?: () => void;
   onExit: () => void;
   onReplay?: () => void;
   onLog: () => void;
 }) {
-  const me = game.players[HUMAN];
+  const { winner, players, turn, resigned } = over;
+  const me = players[seat];
   const won = isWinner(me, winner);
   return (
     <Modal title={winner === 'draw' ? '平局' : won ? '胜利！' : '失败'}>
       <p>
         {winner === 'draw' ? (
           <>
-            牌堆第 {DRAW_GAME_PILES} 次被摸光，<b>平局</b>，共 {game.turn} 回合。不计入战绩。
+            牌堆第 {DRAW_GAME_PILES} 次被摸光，<b>平局</b>，共 {turn} 回合。不计入战绩。
           </>
         ) : (
           <>
-            {game.resigned && `${game.resigned.seat === HUMAN ? '你' : game.players[game.resigned.seat].name}认输，`}
-            <b>{winnerLabel(winner, game.players.length)}</b>获胜，共 {game.turn} 回合。
+            {resigned && `${resigned.seat === seat ? '你' : players[resigned.seat].name}认输，`}
+            <b>{winnerLabel(winner, players.length)}</b>获胜，共 {turn} 回合。
           </>
         )}
       </p>
@@ -1050,20 +1080,22 @@ function GameOver({
           </tr>
         </thead>
         <tbody>
-          {game.players.map((p) => (
+          {players.map((p) => (
             <tr key={p.seat}>
               <td>{p.name}</td>
               <td>{generalDef(p.general).name}</td>
-              <td>{roleLabel(p.role, game.players.length)}</td>
+              <td>{roleLabel(p.role, players.length)}</td>
               <td>{p.alive ? `存活（${p.hp}/${p.maxHp}）` : '阵亡'}</td>
             </tr>
           ))}
         </tbody>
       </table>
       <div className="choice-row">
-        <button className="primary" onClick={onAgain}>
-          再来一局
-        </button>
+        {onAgain && (
+          <button className="primary" onClick={onAgain}>
+            再来一局
+          </button>
+        )}
         {onReplay && <button onClick={onReplay}>查看回放</button>}
         <button onClick={onLog}>出牌记录</button>
         <button onClick={onExit}>返回菜单</button>
