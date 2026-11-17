@@ -80,7 +80,8 @@ export function saveGame(rec: GameRecord, store: KV = defaultStore()): void {
   if (!isVersus(recordPlayers(rec))) stats.byRole[rec.role] = bump(stats.byRole[rec.role], rec.won);
   stats.byGeneral[rec.general] = bump(stats.byGeneral[rec.general], rec.won);
   const level = (rec.level ?? 'normal') as AiLevel;
-  stats.byLevel = { ...stats.byLevel, [level]: bump(stats.byLevel?.[level], rec.won) };
+  // 按难度只统计对电脑的单机局
+  if (!rec.online) stats.byLevel = { ...stats.byLevel, [level]: bump(stats.byLevel?.[level], rec.won) };
   const n = String(recordPlayers(rec));
   stats.byPlayers = { ...stats.byPlayers, [n]: bump(stats.byPlayers?.[n], rec.won) };
   try {

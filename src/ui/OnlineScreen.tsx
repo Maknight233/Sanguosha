@@ -4,12 +4,13 @@ import { AI_LEVEL_NAME, type AiLevel } from '../ai/basic';
 import { DUEL_PLAYERS, PLAYER_COUNTS, TEAM_PLAYERS } from '../engine/game';
 import { ClientRoom } from '../net/client';
 import { cleanName, HostRoom } from '../net/host';
-import { TIMER_MS, TIMER_NAME, type LobbyState, type RoomSettings, type TimerPreset } from '../net/protocol';
+import { TIMER_MS, TIMER_NAME, type LobbyState, type RoomSettings, type SharedRecord, type TimerPreset } from '../net/protocol';
+import { onlineRecord } from '../net/record';
 import { normalizeRoomId, type Transport } from '../net/transport';
 import { roleSummary } from './App';
 import { Modal } from './components';
 import { TableScreen } from './GameScreen';
-import { loadLevel, loadOnlineName, loadPlayers, onlineToken, saveOnlineName } from './storage';
+import { loadLevel, loadOnlineName, loadPlayers, loadRecords, onlineToken, saveGame, saveOnlineName } from './storage';
 import type { TableClient, TableSnapshot } from './table';
 
 /** 房间号放在链接里：…/?room=ABC123 */
@@ -265,12 +266,23 @@ function timerNote(t: TimerPreset): string {
   return `出牌阶段 ${ms.play / 1000} 秒，其他操作 ${ms.other / 1000} 秒；超时由电脑替你操作这一次。掉线的人由电脑托管。`;
 }
 
+/** 对局结束后存进「对局记录」并计入战绩（同一局只存一次） */
+function useSaveRecord(shared: SharedRecord | null | undefined, seat: number) {
+  useEffect(() => {
+    if (!shared || seat < 0) return;
+    const rec = onlineRecord(shared, seat);
+    if (loadRecords().some((r) => r.id === rec.id)) return;
+    saveGame(rec);
+  }, [shared, seat]);
+}
+
 // ───────────── 房主 ─────────────
 
 function HostView({ room, onExit }: { room: HostRoom; onExit: () => void }) {
   const match = room.match;
   // 每局一个牌桌对象
   const table = useMemo(() => room.hostTable(), [match]);
+  useSaveRecord(match?.record, match ? match.seatOf(room.hostMember.id) : -1);
   if (match && table) {
     return (
       <OnlineTable
@@ -309,6 +321,7 @@ function HostView({ room, onExit }: { room: HostRoom; onExit: () => void }) {
 
 function ClientView({ room, onExit }: { room: ClientRoom; onExit: () => void }) {
   const { lobby, table, status } = room;
+  useSaveRecord(room.record, table?.ready ? table.snapshot().me : -1);
   const overlay =
     status === 'reconnecting' ? (
       <Modal title="连接断开">

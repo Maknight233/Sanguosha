@@ -89,6 +89,8 @@ export function readingAt(snap: Snapshot, perspective: Perspective): Reading | n
 }
 
 function ReplayView({ record, data, onBack }: { record: GameRecord; data: ReplayResult; onBack: () => void }) {
+  /** 玩家本人的座位（单机为 0，联机可能是任意座位），放在下方 */
+  const me = record.human ?? 0;
   const [perspective, setPerspective] = useState<Perspective>('off');
   const last = data.snapshots.length - 1;
   const [step, setStep] = useState(0);
@@ -153,7 +155,7 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
       <div className={`table ${isCrowded(snap.players.length) ? 'crowded' : ''}`} ref={tableRef}>
         {(['me', 'right', 'top', 'left'] as const).map((side) => (
           <div key={side} className={side === 'me' ? 'area-me' : `seat-row seat-row-${side}`}>
-            {(side === 'me' ? [0] : tableSides(snap.players.length)[side]).map((seat) => snap.players[seat]).map((p) => (
+            {(side === 'me' ? [me] : tableSides(snap.players.length, me)[side]).map((seat) => snap.players[seat]).map((p) => (
             <div key={p.seat} className="replay-seat">
               <SeatView
                 p={asPublic(p)}
@@ -254,7 +256,7 @@ function ReplayView({ record, data, onBack }: { record: GameRecord; data: Replay
               <option value="observer">旁观者（只看公开信息）</option>
               {snap.players.map((p) => (
                 <option key={p.seat} value={p.seat}>
-                  {p.seat === 0 ? '你' : p.name}（{p.general ? generalDef(p.general).name : '?'}·{roleLabel(p.role, record.names.length)}）的 AI 视角
+                  {p.seat === me ? '你' : p.name}（{p.general ? generalDef(p.general).name : '?'}·{roleLabel(p.role, record.names.length)}）的 AI 视角
                 </option>
               ))}
             </select>

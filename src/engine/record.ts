@@ -37,6 +37,8 @@ export interface GameRecord {
   resign?: Resignation;
   /** 开局可以刷牌的座位（旧记录没有，即不刷牌） */
   mulligan?: number[];
+  /** 联机对局（其他座位有真人） */
+  online?: boolean;
 }
 
 /** 包装控制器：把每次回答按顺序写入共享列表 */

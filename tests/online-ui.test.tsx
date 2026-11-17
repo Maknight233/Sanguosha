@@ -6,6 +6,8 @@ import { HostRoom } from '../src/net/host';
 import { MemoryTransport } from '../src/net/transport';
 import { OnlineScreen } from '../src/ui/OnlineScreen';
 import { tableSides } from '../src/ui/layout';
+import { loadRecords, loadStats } from '../src/ui/storage';
+import { replay } from '../src/engine/record';
 
 afterEach(cleanup);
 beforeEach(() => localStorage.clear());
@@ -67,4 +69,27 @@ describe('联机界面', () => {
     fireEvent.click(screen.getByText('加入房间'));
     await screen.findByText('房间 ZZZ999 不存在或房主已离开');
   });
+
+  it('对局结束后自动存进对局记录（标记联机），回放与原局一致', async () => {
+    const net = new MemoryTransport();
+    // 所有人立即超时，由电脑代打到结束
+    const host = new HostRoom(await net.host('REC234'), '房主', { players: 2, level: 'normal', timer: 'standard' }, { aiDelay: 0, awayDelay: 0, limit: () => 1, seed: 9 });
+    render(<OnlineScreen transport={net} initialRoom="REC234" onExit={() => {}} />);
+    fireEvent.change(screen.getByLabelText('昵称'), { target: { value: '客人' } });
+    fireEvent.click(screen.getByText('加入房间'));
+    fireEvent.click(await screen.findByText('准备'));
+    await waitFor(() => expect(host.canStart()).toBe(true));
+    act(() => host.start());
+    await waitFor(() => expect(loadRecords()).toHaveLength(1), { timeout: 20000 });
+    const rec = loadRecords()[0];
+    const seat = host.match!.seatOf(host.members[1].id);
+    expect(rec).toMatchObject({ online: true, human: seat, names: host.match!.game.players.map((p) => p.name) });
+    expect(rec.role).toBe(host.match!.game.players[seat].role);
+    expect(loadStats().total.games).toBe(1);
+    expect(loadStats().byLevel?.normal).toBeUndefined();
+    expect((await replay(rec)).error).toBeNull();
+    // 结算画面：回到房间
+    fireEvent.click(await screen.findByText('回到房间'));
+    await screen.findByText('联机房间');
+  }, 30000);
 });

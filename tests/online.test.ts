@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { BasicAI } from '../src/ai/basic';
-import { replay, RECORD_VERSION, type GameRecord } from '../src/engine/record';
+import { replay } from '../src/engine/record';
+import { onlineRecord } from '../src/net/record';
 import { ClientRoom } from '../src/net/client';
 import { HostRoom } from '../src/net/host';
-import type { RoomSettings, SharedRecord } from '../src/net/protocol';
+import type { RoomSettings } from '../src/net/protocol';
 import { MemoryTransport, RoomNotFound } from '../src/net/transport';
 import type { TableClient, TableSnapshot } from '../src/ui/table';
 
@@ -57,25 +58,7 @@ async function makeRoom(players: number, guests: string[], opts: ConstructorPara
   return { net, host, clients };
 }
 
-function toRecord(r: SharedRecord, seat: number): GameRecord {
-  return {
-    version: RECORD_VERSION,
-    id: 'x',
-    date: 0,
-    seed: r.seed,
-    names: r.names,
-    human: seat,
-    answers: r.answers,
-    winner: r.winner,
-    turns: r.turns,
-    role: r.roles[seat],
-    general: r.generals[seat],
-    won: false,
-    logLength: r.logLength,
-    mulligan: r.mulligan,
-    ...(r.resign ? { resign: r.resign } : {}),
-  };
-}
+const toRecord = onlineRecord;
 
 describe('联机：房间', () => {
   it('昵称去重，准备齐了才能开局，人数不能少于已进房人数', async () => {

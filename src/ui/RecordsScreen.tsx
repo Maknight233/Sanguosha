@@ -245,7 +245,7 @@ function RecordTable({ records, actions, imported }: { records: GameRecord[]; ac
             <td>{generalDef(r.general).name}</td>
             <td>{roleLabel(r.role, recordPlayers(r))}</td>
             <td>{playersLabel(recordPlayers(r))}</td>
-            <td>{levelName(r.level)}</td>
+            <td>{r.online ? `联机·${levelName(r.level)}` : levelName(r.level)}</td>
             <td className={r.won ? 'win' : 'muted'}>
               {r.winner === 'draw' ? '平局' : `${r.won ? '胜' : '负'}（${winnerLabel(r.winner, recordPlayers(r))}获胜）`}
             </td>
