@@ -196,8 +196,8 @@ export function PlayZone({ log, shortName }: { log: LogEntry[]; shortName: (seat
 }
 
 /** 当前处于濒死的角色（体力 ≤ 0 但还活着） */
-export function dyingSeats(players: ReadonlyArray<{ seat: number; alive: boolean; hp: number }>): number[] {
-  return players.filter((p) => p.alive && p.hp <= 0).map((p) => p.seat);
+export function dyingSeats(players: ReadonlyArray<{ seat: number; alive: boolean; hp: number; maxHp: number }>): number[] {
+  return players.filter((p) => p.alive && p.maxHp > 0 && p.hp <= 0).map((p) => p.seat);
 }
 
 /** 受伤的墨点：一大团墨加若干飞溅的小点，形状随 seed 变化 */

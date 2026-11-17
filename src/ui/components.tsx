@@ -167,7 +167,7 @@ interface SeatProps {
 
 export function SeatView({ p, players = 5, isCurrent, selectable, selected, distance, inRange, onClick, onInfo, extra }: SeatProps) {
   const g = p.general ? generalDef(p.general) : null;
-  const dying = p.alive && p.hp <= 0;
+  const dying = p.alive && p.maxHp > 0 && p.hp <= 0;
   const cls = ['seat', g && `faction-${g.faction}`, isCurrent && 'current', !p.alive && 'dead', dying && 'dying', selectable && 'selectable', selected && 'selected']
     .filter(Boolean)
     .join(' ');

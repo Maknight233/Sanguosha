@@ -1,6 +1,7 @@
 import type { Game, Resignation } from '../engine/game';
 import type { GameView, LogEntry, Player, Request, Response, Winner } from '../engine/types';
 import type { HumanController } from './controllers';
+import type { SeatInfo } from '../net/protocol';
 
 /** 对局结束后公开的结果（所有身份公开） */
 export interface TableOver {
@@ -27,6 +28,13 @@ export interface TableSnapshot {
   /** 正在等我回答的询问 */
   pending: Request | null;
   over: TableOver | null;
+  /** 联机才有：当前询问的截止时间（本机时钟，毫秒；不限时为 null）与各座位状态 */
+  online?: OnlineInfo;
+}
+
+export interface OnlineInfo {
+  deadline: number | null;
+  seats: SeatInfo[];
 }
 
 /** 牌桌来源：界面通过它读取快照、提交回答 */

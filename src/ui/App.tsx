@@ -8,16 +8,19 @@ import { GameScreen } from './GameScreen';
 import { RecordsScreen } from './RecordsScreen';
 import { ReplayScreen } from './ReplayScreen';
 import { RulesPage } from './RulesPage';
+import { OnlineScreen, roomFromUrl } from './OnlineScreen';
 
-type Screen = 'menu' | 'game' | 'tutorial' | 'rules' | 'records' | 'replay';
+type Screen = 'menu' | 'game' | 'tutorial' | 'rules' | 'records' | 'replay' | 'online';
 
 export function App() {
-  const [screen, setScreen] = useState<Screen>('menu');
+  // 打开邀请链接（带 ?room=）时直接进联机界面
+  const [invite] = useState(roomFromUrl);
+  const [screen, setScreen] = useState<Screen>(invite ? 'online' : 'menu');
   const [replaying, setReplaying] = useState<GameRecord | null>(null);
   const [level, setLevel] = useState<AiLevel>(loadLevel);
   const [players, setPlayers] = useState<number>(loadPlayers);
   // 第一次打开时问一次要不要看教程；选哪个都不再问
-  const [askTutorial, setAskTutorial] = useState(() => !loadTutorialAsked());
+  const [askTutorial, setAskTutorial] = useState(() => !invite && !loadTutorialAsked());
   const answerTutorial = (yes: boolean) => {
     saveTutorialAsked();
     setAskTutorial(false);
@@ -37,6 +40,7 @@ export function App() {
   };
   if (screen === 'tutorial') return <GameScreen key="tutorial" tutorial onExit={() => setScreen('menu')} onTutorialPlay={() => setScreen('game')} />;
   if (screen === 'game') return <GameScreen key="game" onExit={() => setScreen('menu')} onReplay={openReplay} level={level} players={players} />;
+  if (screen === 'online') return <OnlineScreen initialRoom={invite} onExit={() => setScreen('menu')} />;
   if (screen === 'rules') return <RulesPage onBack={() => setScreen('menu')} />;
   if (screen === 'records') return <RecordsScreen onBack={() => setScreen('menu')} onReplay={openReplay} />;
   // 回放结束后回到对局记录
@@ -74,6 +78,9 @@ export function App() {
       <div className="menu-buttons">
         <button className="primary big" onClick={() => setScreen('game')}>
           开始游戏
+        </button>
+        <button className="big" onClick={() => setScreen('online')}>
+          联机对战
         </button>
         <button className="big" onClick={() => setScreen('tutorial')}>
           新手教程

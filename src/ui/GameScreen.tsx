@@ -184,17 +184,21 @@ export interface TableScreenProps {
   centerExtra?: ReactNode;
   /** 结算画面「再来一局」；不传则不显示 */
   onAgain?: () => void;
+  /** 「再来一局」按钮的文字（联机为「回到房间」） */
+  againLabel?: string;
   onExit: () => void;
   onReplay?: () => void;
   onTutorialPlay?: () => void;
 }
 
 /** 牌桌界面：只读座位快照，单机与联机共用 */
-export function TableScreen({ table, gate, director, label, speed, sideButtons, centerExtra, onAgain, onExit, onReplay, onTutorialPlay }: TableScreenProps) {
+export function TableScreen({ table, gate, director, label, speed, sideButtons, centerExtra, onAgain, againLabel, onExit, onReplay, onTutorialPlay }: TableScreenProps) {
   const [, rerender] = useReducer((x: number) => x + 1, 0);
   useEffect(() => {
     const unsubs = [table.subscribe(rerender)];
     if (director) unsubs.push(director.subscribe(rerender));
+    // 订阅前可能已有变化（联机消息先到），补一次刷新
+    rerender();
     return () => unsubs.forEach((u) => u());
   }, [table, director]);
   /** 2v2 认输确认框 */
@@ -429,7 +433,7 @@ export function TableScreen({ table, gate, director, label, speed, sideButtons, 
           </div>
         </Modal>
       )}
-      {over && !logOpen && <GameOver over={over} me={me} onAgain={onAgain} onExit={onExit} onReplay={onReplay} onLog={openLog} />}
+      {over && !logOpen && <GameOver over={over} me={me} onAgain={onAgain} againLabel={againLabel} onExit={onExit} onReplay={onReplay} onLog={openLog} />}
     </div>
   );
 }
@@ -729,7 +733,7 @@ function PlayerArea({
   return (
     <div
       data-seat={view.me}
-      className={`player-area ${view.current === view.me && view.turn > 0 ? 'current' : ''} ${me.alive ? '' : 'dead'} ${me.alive && me.hp <= 0 ? 'dying' : ''}`}
+      className={`player-area ${view.current === view.me && view.turn > 0 ? 'current' : ''} ${me.alive ? '' : 'dead'} ${me.alive && me.maxHp > 0 && me.hp <= 0 ? 'dying' : ''}`}
     >
       <div className="me-info">
         <div>
@@ -1042,6 +1046,7 @@ function GameOver({
   over,
   me: seat,
   onAgain,
+  againLabel = '再来一局',
   onExit,
   onReplay,
   onLog,
@@ -1049,6 +1054,7 @@ function GameOver({
   over: TableOver;
   me: number;
   onAgain?: () => void;
+  againLabel?: string;
   onExit: () => void;
   onReplay?: () => void;
   onLog: () => void;
@@ -1093,7 +1099,7 @@ function GameOver({
       <div className="choice-row">
         {onAgain && (
           <button className="primary" onClick={onAgain}>
-            再来一局
+            {againLabel}
           </button>
         )}
         {onReplay && <button onClick={onReplay}>查看回放</button>}

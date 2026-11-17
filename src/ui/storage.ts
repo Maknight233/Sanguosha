@@ -176,3 +176,39 @@ export function saveTutorialAsked(store: KV = defaultStore()): void {
     /* 忽略 */
   }
 }
+
+// ───────────── 联机 ─────────────
+
+const ONLINE_NAME_KEY = 'sanguo.online.name';
+const ONLINE_TOKEN_KEY = 'sanguo.online.token.';
+
+/** 联机昵称 */
+export function loadOnlineName(store: KV = defaultStore()): string {
+  try {
+    return store.getItem(ONLINE_NAME_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function saveOnlineName(name: string, store: KV = defaultStore()): void {
+  try {
+    store.setItem(ONLINE_NAME_KEY, name);
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 某个房间的重连凭证：刷新页面后用它认回原来的座位 */
+export function onlineToken(roomId: string, store: KV = defaultStore()): string {
+  const key = ONLINE_TOKEN_KEY + roomId;
+  try {
+    const old = store.getItem(key);
+    if (old) return old;
+    const t = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    store.setItem(key, t);
+    return t;
+  } catch {
+    return Math.random().toString(36).slice(2);
+  }
+}
